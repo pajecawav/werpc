@@ -1,0 +1,65 @@
+{
+	"name": "wertc",
+	"version": "0.0.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/pajecawav/wertc.git"
+	},
+	"bugs": {
+		"url": "https://github.com/pajecawav/wertc/issues"
+	},
+	"homepage": "https://github.com/pajecawav/wertc#readme",
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"test:ui": "vitest --ui",
+		"lint": "run-p -l lint:*",
+		"lint:eslint": "eslint .",
+		"lint:tsc": "tsc --noEmit",
+		"lint:format": "prettier . --check",
+		"lint:package": "publint",
+		"format": "prettier . --write",
+		"prepare": "husky",
+		"prepublishOnly": "npm-run-all -p -l lint:* test -s build"
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^20.2.0",
+		"@commitlint/config-conventional": "^20.2.0",
+		"@eslint/js": "^9.39.2",
+		"@pajecawav/prettier-config": "^1.0.0",
+		"@types/node": "^25.0.6",
+		"@vitest/coverage-v8": "^4.0.16",
+		"@vitest/ui": "^4.0.16",
+		"cross-env": "^10.1.0",
+		"eslint": "^9.39.2",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.2.7",
+		"npm-run-all2": "^8.0.4",
+		"prettier": "^3.7.4",
+		"publint": "^0.3.16",
+		"tsdown": "^0.19.0",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.50.0",
+		"vitest": "^4.0.16"
+	},
+	"packageManager": "pnpm@10.28.0+sha512.05df71d1421f21399e053fde567cea34d446fa02c76571441bfc1c7956e98e363088982d940465fd34480d4d90a0668bc12362f8aa88000a64e83d0b0e47be48"
+}
