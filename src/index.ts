@@ -1,8 +1,4 @@
-export function sum(...values: number[]): number {
-	let result = 0;
-
-	for (const value of values) {
-		result += value;
-	}
-	return result;
-}
+export type { WERPCContext } from "./context";
+export { initHandler } from "./handler";
+export type { WERPCNamespaces } from "./types";
+export { initWERPC } from "./werpc";

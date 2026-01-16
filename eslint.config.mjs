@@ -11,7 +11,7 @@ export default defineConfig(
 		extends: [eslint.configs.recommended, tseslint.configs.recommendedTypeChecked],
 		languageOptions: {
 			parserOptions: {
-				project: ["./tsconfig.node.json", "./tsconfig.app.json"],
+				project: ["./tsconfig.node.json", "./tsconfig.lib.json"],
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},

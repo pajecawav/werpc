@@ -5,5 +5,5 @@ export default defineConfig({
 	platform: "neutral",
 	sourcemap: true,
 	dts: true,
-	tsconfig: "./tsconfig.app.json",
+	tsconfig: "./tsconfig.lib.json",
 });

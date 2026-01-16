@@ -30,6 +30,8 @@
 		"prettier.config.mjs",
 		"commitlint.config.js",
 		"eslint.config.mjs",
-		"tsdown.config.ts"
+		"tsdown.config.ts",
+		"rsbuild.config.ts",
+		"vitest.config.ts"
 	]
 }

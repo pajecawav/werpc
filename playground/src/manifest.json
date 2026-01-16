@@ -1,0 +1,23 @@
+{
+	"$schema": "https://json.schemastore.org/chrome-manifest",
+	"name": "werpc-playground",
+	"description": "werpc playground",
+	"version": "0.0.0",
+	"manifest_version": 3,
+	"host_permissions": ["http://*/*", "https://*/*"],
+	"devtools_page": "devtools.html",
+	"background": {
+		"service_worker": "background.js",
+		"type": "module"
+	},
+	"options_page": "options.html",
+	"action": {
+		"default_popup": "popup.html"
+	},
+	"content_scripts": [
+		{
+			"matches": ["*://example.com/*"],
+			"js": ["content.js", "content2.js"]
+		}
+	]
+}
