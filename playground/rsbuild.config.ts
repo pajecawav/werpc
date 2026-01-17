@@ -1,7 +1,6 @@
 import { defineConfig } from "@rsbuild/core";
 
 export default defineConfig({
-	root: "./playground",
 	source: {
 		entry: {
 			devtools: "./src/devtools.ts",

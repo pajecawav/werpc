@@ -1,4 +1,4 @@
-import { initHandler, initWERPC } from "../../src";
+import { initHandler, initWERPC, InferNamespace } from "werpc";
 import { pingAll } from "./ping";
 
 const namespace = "devtoolsPanel";
@@ -13,11 +13,9 @@ const handler = initHandler({
 	debug: true,
 });
 
-declare module "../../src/types" {
+declare module "werpc" {
 	// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 	interface WERPCNamespaces extends InferNamespace<typeof handler> {}
 }
 
 pingAll(namespace);
-
-// initDebugApp("devtoolsPanel");

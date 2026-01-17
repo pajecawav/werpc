@@ -1,4 +1,4 @@
-import { createClient } from "../../src/client";
+import { createClient } from "werpc";
 
 export const pingAll = (namespace: string) => {
 	const log = (...args: unknown[]) => {

@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import { initHandler, initWERPC } from "../../src";
+import { InferNamespace, initHandler, initWERPC } from "werpc";
 import { pingAll } from "./ping";
 
 const namespace = "devtools";
@@ -14,13 +14,11 @@ const handler = initHandler({
 	debug: true,
 });
 
-declare module "../../src/types" {
+declare module "werpc" {
 	// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 	interface WERPCNamespaces extends InferNamespace<typeof handler> {}
 }
 
 pingAll(namespace);
-
-// initDebugApp("devtools");
 
 await browser.devtools.panels.create("werpc", "", "devtoolsPanel.html");

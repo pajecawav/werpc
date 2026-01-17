@@ -1,7 +1,6 @@
 {
 	"name": "werpc",
-	"version": "0.0.0",
-	"private": true,
+	"version": "0.0.1",
 	"license": "MIT",
 	"type": "module",
 	"exports": {
@@ -28,17 +27,14 @@
 	"scripts": {
 		"build": "tsdown",
 		"dev": "tsdown --watch",
-		"play": "cross-env FORCE_COLOR=1 run-p -l play:watch play:start",
-		"play:build": "rsbuild build",
-		"play:watch": "rsbuild build --watch",
-		"play:start": "web-ext run -s playground/dist -t chromium",
+		"play": "pnpm --filter playground ",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage",
 		"test:ui": "vitest --ui",
 		"lint": "cross-env FORCE_COLOR=1 run-p -l lint:*",
 		"lint:eslint": "eslint .",
-		"lint:tsc": "tsc --noEmit",
+		"lint:tsc": "tsc -b --noEmit",
 		"lint:format": "prettier . --check",
 		"lint:package": "publint",
 		"format": "prettier . --write",

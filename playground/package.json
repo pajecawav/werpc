@@ -1,0 +1,16 @@
+{
+	"name": "werpc-pcplayground",
+	"private": true,
+	"version": "0.0.0",
+	"scripts": {
+		"build": "rsbuild build",
+		"watch": "rsbuild build --watch",
+		"start": "web-ext run -s playground/dist -t chromium"
+	},
+	"dependencies": {
+		"werpc": "workspace:*"
+	},
+	"devDependencies": {
+		"webextension-polyfill": "^0.12.0"
+	}
+}

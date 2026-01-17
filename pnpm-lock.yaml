@@ -87,6 +87,16 @@ importers:
         specifier: ^0.12.0
         version: 0.12.0
 
+  playground:
+    dependencies:
+      werpc:
+        specifier: workspace:*
+        version: link:..
+    devDependencies:
+      webextension-polyfill:
+        specifier: ^0.12.0
+        version: 0.12.0
+
 packages:
 
   '@babel/code-frame@7.27.1':
