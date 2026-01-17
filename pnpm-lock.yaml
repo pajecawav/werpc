@@ -7,6 +7,22 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@trpc/client':
+        specifier: ^11.8.1
+        version: 11.8.1(@trpc/server@11.8.1(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server':
+        specifier: ^11.8.1
+        version: 11.8.1(typescript@5.9.3)
+      nanoid:
+        specifier: ^5.1.6
+        version: 5.1.6
+      valibot:
+        specifier: ^1.2.0
+        version: 1.2.0(typescript@5.9.3)
+      webextension-polyfill:
+        specifier: ^0.12.0
+        version: 0.12.0
     devDependencies:
       '@commitlint/cli':
         specifier: ^20.3.1
@@ -23,12 +39,6 @@ importers:
       '@rsbuild/core':
         specifier: ^1.7.2
         version: 1.7.2
-      '@trpc/client':
-        specifier: ^11.8.1
-        version: 11.8.1(@trpc/server@11.8.1(typescript@5.9.3))(typescript@5.9.3)
-      '@trpc/server':
-        specifier: ^11.8.1
-        version: 11.8.1(typescript@5.9.3)
       '@types/node':
         specifier: ^25.0.9
         version: 25.0.9
@@ -53,9 +63,6 @@ importers:
       lint-staged:
         specifier: ^16.2.7
         version: 16.2.7
-      nanoid:
-        specifier: ^5.1.6
-        version: 5.1.6
       npm-run-all2:
         specifier: ^8.0.4
         version: 8.0.4
@@ -74,18 +81,12 @@ importers:
       typescript-eslint:
         specifier: ^8.53.0
         version: 8.53.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
-      valibot:
-        specifier: ^1.2.0
-        version: 1.2.0(typescript@5.9.3)
       vitest:
         specifier: ^4.0.17
         version: 4.0.17(@types/node@25.0.9)(@vitest/ui@4.0.17)(jiti@2.6.1)(yaml@2.8.2)
       web-ext:
         specifier: ^9.2.0
         version: 9.2.0(jiti@2.6.1)
-      webextension-polyfill:
-        specifier: ^0.12.0
-        version: 0.12.0
 
   playground:
     dependencies:

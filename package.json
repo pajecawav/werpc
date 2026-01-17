@@ -41,14 +41,19 @@
 		"prepare": "husky",
 		"prepublishOnly": "cross-env FORCE_COLOR=1 npm-run-all -p -l lint:* test -s build"
 	},
+	"dependencies": {
+		"@trpc/client": "^11.8.1",
+		"@trpc/server": "^11.8.1",
+		"nanoid": "^5.1.6",
+		"valibot": "^1.2.0",
+		"webextension-polyfill": "^0.12.0"
+	},
 	"devDependencies": {
 		"@commitlint/cli": "^20.3.1",
 		"@commitlint/config-conventional": "^20.3.1",
 		"@eslint/js": "^9.39.2",
 		"@pajecawav/prettier-config": "^1.0.0",
 		"@rsbuild/core": "^1.7.2",
-		"@trpc/client": "^11.8.1",
-		"@trpc/server": "^11.8.1",
 		"@types/node": "^25.0.9",
 		"@types/webextension-polyfill": "^0.12.4",
 		"@vitest/coverage-v8": "^4.0.17",
@@ -57,17 +62,14 @@
 		"eslint": "^9.39.2",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
-		"nanoid": "^5.1.6",
 		"npm-run-all2": "^8.0.4",
 		"prettier": "^3.8.0",
 		"publint": "^0.3.16",
 		"tsdown": "^0.19.0",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.53.0",
-		"valibot": "^1.2.0",
 		"vitest": "^4.0.17",
-		"web-ext": "^9.2.0",
-		"webextension-polyfill": "^0.12.0"
+		"web-ext": "^9.2.0"
 	},
 	"packageManager": "pnpm@10.28.0+sha512.05df71d1421f21399e053fde567cea34d446fa02c76571441bfc1c7956e98e363088982d940465fd34480d4d90a0668bc12362f8aa88000a64e83d0b0e47be48"
 }
