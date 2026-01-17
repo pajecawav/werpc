@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 export interface BridgeRequestPayload<Input = unknown> {
 	idempotencyKey: string;
+	clientId: string;
 	namespace: string;
 	id: number;
 	path: string;
@@ -17,6 +18,7 @@ export type BridgeRequest = v.InferOutput<typeof bridgeRequestSchema>;
 
 export interface BridgeEventPayload<Output = unknown> {
 	idempotencyKey: string;
+	clientId: string;
 	namespace: string;
 	id: number;
 	type: "output" | "subscription.output" | "subscription.stop";

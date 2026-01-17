@@ -1,18 +1,11 @@
 import browser from "webextension-polyfill";
-import { InferNamespace, initHandler, initWERPC } from "werpc";
-import { pingAll } from "./ping";
+import { InferNamespace } from "werpc";
+import { createHandler, pingAll } from "./app";
 
 const namespace = "devtools";
 
-const werpc = initWERPC();
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const handler = initHandler({
-	namespace,
-	router: werpc.router({
-		ping: werpc.procedure.query(({ ctx }) => `pong from devtools ${ctx.tabId}`),
-	}),
-	debug: true,
-});
+const handler = createHandler(namespace);
 
 declare module "werpc" {
 	// eslint-disable-next-line @typescript-eslint/no-empty-object-type

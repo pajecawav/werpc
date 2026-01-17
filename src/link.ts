@@ -5,6 +5,7 @@ import { BridgeRequest } from "./bridge";
 import { createIdempotencyKey } from "./idempotency/key";
 
 interface CreateWERPCLinkOptions {
+	clientId: string;
 	namespace: string;
 	postMessage: (request: BridgeRequest) => void;
 	listeners: Map<string, (result: unknown) => void>;
@@ -13,6 +14,7 @@ interface CreateWERPCLinkOptions {
 export type WERPCLink = TRPCLink<AnyRouter>;
 
 export const createWERPCLink = ({
+	clientId,
 	namespace,
 	postMessage,
 	listeners,
@@ -37,6 +39,7 @@ export const createWERPCLink = ({
 					// observer.next({ result: { type: "stopped" } });
 					postMessage({
 						werpc_request: {
+							clientId,
 							namespace,
 							idempotencyKey: createIdempotencyKey(),
 							id,
@@ -51,20 +54,24 @@ export const createWERPCLink = ({
 				if (type === "subscription") {
 					request = {
 						werpc_request: {
-							namespace,
+							clientId,
 							idempotencyKey: createIdempotencyKey(),
+							namespace,
 							id,
 							path,
 							input,
 							type: "subscription.start",
 						},
 					};
+
+					// TODO: we need to ACK subscription and retry it after some time
 					observer.next({ result: { type: "started" } });
 				} else {
 					request = {
 						werpc_request: {
-							namespace,
+							clientId,
 							idempotencyKey: createIdempotencyKey(),
+							namespace,
 							id,
 							path,
 							input,

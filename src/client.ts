@@ -6,6 +6,7 @@ import { detectContext } from "./detect";
 import { createWERPCLink, WERPCLink } from "./link";
 import { WERPCPort } from "./port";
 import { WERPCNamespaces } from "./types";
+import { createIdempotencyKey } from "./idempotency/key";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
@@ -22,6 +23,7 @@ export const createClient = (): WERPClient => {
 		throw new Error("Can't use client in background worker context. Use subscriptions instead");
 	}
 
+	const clientId = createIdempotencyKey();
 	const listeners = new Map<string, (result: unknown) => void>();
 
 	const onMessage = (message: unknown) => {
@@ -34,11 +36,16 @@ export const createClient = (): WERPClient => {
 		const {
 			// TODO: handle idempotency?
 			// idempotencyKey,
+			clientId: eventClientId,
 			id,
 			namespace,
 			type,
 			output,
 		} = r.output.werpc_event;
+
+		if (eventClientId !== clientId) {
+			return;
+		}
 
 		const namespacedKey = `${namespace}:${id}`;
 
@@ -74,7 +81,7 @@ export const createClient = (): WERPClient => {
 				return existingClient.client;
 			}
 
-			const link = createWERPCLink({ namespace, listeners, postMessage });
+			const link = createWERPCLink({ clientId, namespace, listeners, postMessage });
 			const client = createTRPCClient({ links: [link] });
 
 			clients.set(namespace, { client, link });

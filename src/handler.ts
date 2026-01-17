@@ -13,8 +13,8 @@ import {
 import { WERPC_NAMESPACE } from "./constants";
 import { WERPCContext } from "./context";
 import { detectContext } from "./detect";
-import { IdempotencyManager } from "./idempotency/manager";
 import { createIdempotencyKey } from "./idempotency/key";
+import { IdempotencyManager } from "./idempotency/manager";
 import { createLogger } from "./logger";
 import { WERPCPort } from "./port";
 
@@ -66,8 +66,9 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 	 */
 	const broadcast = (request: BridgeRequest | BridgeEvent) => {
 		logger.debug(`broadcasting`, request, ports.size);
+
 		for (const p of ports) {
-			void p.postMessage(request);
+			p.postMessage(request);
 		}
 	};
 
@@ -96,6 +97,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 		const {
 			idempotencyKey,
+			clientId,
 			namespace: _namespace,
 			id,
 			path,
@@ -120,7 +122,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			broadcast(event);
 		};
 
-		const requestId = id.toString();
+		const requestId = `${clientId}:${id}`;
 
 		if (type === "subscription.stop") {
 			subscriptions.get(requestId)?.();
@@ -158,6 +160,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			for await (const chunk of iterable) {
 				sendEvent({
 					idempotencyKey: createIdempotencyKey(),
+					clientId,
 					namespace,
 					id,
 					type: "subscription.output",
@@ -167,6 +170,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
+				clientId,
 				namespace,
 				id,
 				type: "subscription.stop",
@@ -175,6 +179,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		} else {
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
+				clientId,
 				namespace,
 				id,
 				type: "output",
@@ -203,8 +208,9 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		);
 
 		port.onDisconnect.addListener(() => {
-			// TODO: should not disconnect all subscriptions
-			subscriptions.forEach(unsub => unsub());
+			// TODO: should remove subscriptitons for the port
+			// TODO: also shouldn't really remove subscription because ports are persistent
+			// subscriptions.forEach(unsub => unsub());
 			ports.delete(port);
 		});
 
