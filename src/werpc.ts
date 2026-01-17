@@ -1,5 +1,8 @@
 import { initTRPC } from "@trpc/server";
-import { WERPCContext } from "./context";
+
+export interface WERPCContext {
+	tabId?: number;
+}
 
 export const initWERPC = <TContext extends WERPCContext, TMeta extends object = object>() => {
 	return initTRPC

@@ -11,12 +11,12 @@ import {
 	bridgeRequestSchema,
 } from "./bridge";
 import { WERPC_NAMESPACE } from "./constants";
-import { WERPCContext } from "./context";
 import { detectContext } from "./detect";
 import { createIdempotencyKey } from "./idempotency/key";
 import { IdempotencyManager } from "./idempotency/manager";
 import { createLogger } from "./logger";
 import { WERPCPort } from "./port";
+import { WERPCContext } from "./werpc";
 
 interface PortLike {
 	postMessage(message: unknown): void;
@@ -47,7 +47,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 	const idempotencyManager = new IdempotencyManager();
 
-	// TODO: keys should include namespace and probably port id???
 	const subscriptions = new Map<string, VoidFunction>();
 
 	if (detectContext() !== "service_worker") {

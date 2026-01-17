@@ -1,9 +1,9 @@
 import { TRPCLink } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import { BridgeRequest } from "./bridge";
-import { EventEmitter } from "./events";
-import { createIdempotencyKey } from "./idempotency/key";
+import { BridgeRequest } from "../bridge";
+import { EventEmitter } from "../events";
+import { createIdempotencyKey } from "../idempotency/key";
 
 /** namespace:id */
 type NamespacedKey = `${string}:${number}`;

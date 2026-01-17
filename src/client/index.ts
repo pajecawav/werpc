@@ -1,14 +1,14 @@
 import { createTRPCClient, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import * as v from "valibot";
-import { bridgeEventSchema, BridgeRequest } from "./bridge";
-import { detectContext } from "./detect";
+import { bridgeEventSchema, BridgeRequest } from "../bridge";
+import { detectContext } from "../detect";
+import { EventEmitter } from "../events";
+import { createIdempotencyKey } from "../idempotency/key";
+import { IdempotencyManager } from "../idempotency/manager";
+import { WERPCPort } from "../port";
+import { WERPCNamespaces } from "../types";
 import { createWERPCLink, LinkEvents, WERPCLink } from "./link";
-import { WERPCPort } from "./port";
-import { WERPCNamespaces } from "./types";
-import { createIdempotencyKey } from "./idempotency/key";
-import { EventEmitter } from "./events";
-import { IdempotencyManager } from "./idempotency/manager";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
