@@ -7,13 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@trpc/client':
-        specifier: ^11.8.1
-        version: 11.8.1(@trpc/server@11.8.1(typescript@5.9.3))(typescript@5.9.3)
-      '@trpc/server':
-        specifier: ^11.8.1
-        version: 11.8.1(typescript@5.9.3)
     devDependencies:
       '@commitlint/cli':
         specifier: ^20.2.0
@@ -30,6 +23,12 @@ importers:
       '@rsbuild/core':
         specifier: ^1.7.2
         version: 1.7.2
+      '@trpc/client':
+        specifier: ^11.8.1
+        version: 11.8.1(@trpc/server@11.8.1(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server':
+        specifier: ^11.8.1
+        version: 11.8.1(typescript@5.9.3)
       '@types/node':
         specifier: ^25.0.6
         version: 25.0.6

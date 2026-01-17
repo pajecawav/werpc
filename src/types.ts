@@ -8,7 +8,3 @@ export type InferNamespace<THandler extends WERPCHandler<any, any>> =
 	THandler extends WERPCHandler<infer TNamespace, infer TRouter>
 		? { [key in TNamespace]: TRouter }
 		: never;
-
-declare const test: WERPCNamespaces;
-
-console.log(test.background.ping());

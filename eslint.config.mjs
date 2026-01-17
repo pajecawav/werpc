@@ -15,5 +15,8 @@ export default defineConfig(
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},
+		rules: {
+			"@typescript-eslint/explicit-member-accessibility": "error",
+		},
 	},
 );

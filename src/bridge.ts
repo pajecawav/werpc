@@ -10,7 +10,7 @@ export interface BridgeRequestPayload<Input = unknown> {
 }
 
 export const bridgeRequestSchema = v.object({
-	werpc: v.custom<BridgeRequestPayload>(() => true),
+	werpc_request: v.custom<BridgeRequestPayload>(() => true),
 });
 
 export type BridgeRequest = v.InferOutput<typeof bridgeRequestSchema>;
@@ -24,7 +24,7 @@ export interface BridgeEventPayload<Output = unknown> {
 }
 
 export const bridgeEventSchema = v.object({
-	werpc: v.custom<BridgeEventPayload>(() => true),
+	werpc_event: v.custom<BridgeEventPayload>(() => true),
 });
 
 export type BridgeEvent = v.InferOutput<typeof bridgeEventSchema>;

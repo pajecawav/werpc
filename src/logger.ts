@@ -1,6 +1,4 @@
-export const createLogger = (namespace: string, debug = false) => {
-	const prefix = `[${namespace}]`;
-
+export const createLogger = (prefix: string, debug = false) => {
 	const logger = {
 		debug: (...args: unknown[]) => (debug ? console.log(prefix, ...args) : undefined),
 		log: (...args: unknown[]) => console.log(prefix, ...args),

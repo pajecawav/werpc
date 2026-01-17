@@ -22,7 +22,9 @@ export const createWERPCLink = ({
 			return observable(observer => {
 				const { id, path, input, type, signal } = op;
 
-				listeners.set(`${namespace}:${id}`, data => {
+				const listenerKey = `${namespace}:${id}`;
+
+				listeners.set(listenerKey, data => {
 					observer.next({ result: { data } });
 
 					if (type !== "subscription") {
@@ -31,10 +33,10 @@ export const createWERPCLink = ({
 				});
 
 				signal?.addEventListener("abort", () => {
-					listeners.delete(`${namespace}:${id}`);
+					listeners.delete(listenerKey);
 					// observer.next({ result: { type: "stopped" } });
 					postMessage({
-						werpc: {
+						werpc_request: {
 							namespace,
 							idempotencyKey: createIdempotencyKey(),
 							id,
@@ -48,7 +50,7 @@ export const createWERPCLink = ({
 				let request: BridgeRequest;
 				if (type === "subscription") {
 					request = {
-						werpc: {
+						werpc_request: {
 							namespace,
 							idempotencyKey: createIdempotencyKey(),
 							id,
@@ -60,7 +62,7 @@ export const createWERPCLink = ({
 					observer.next({ result: { type: "started" } });
 				} else {
 					request = {
-						werpc: {
+						werpc_request: {
 							namespace,
 							idempotencyKey: createIdempotencyKey(),
 							id,

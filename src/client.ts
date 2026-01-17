@@ -1,12 +1,14 @@
 import { createTRPCClient, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import * as v from "valibot";
-import browser from "webextension-polyfill";
+// import browser from "webextension-polyfill";
 import { bridgeEventSchema, BridgeRequest } from "./bridge";
-import { WERPC_NAMESPACE } from "./constants";
+// import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
 import { createWERPCLink, WERPCLink } from "./link";
 import { WERPCNamespaces } from "./types";
+import { WERPCPort } from "./port";
+// import { portManager } from "./portManager";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
@@ -17,6 +19,7 @@ interface NamespacedWERPCClient {
 	link: WERPCLink;
 }
 
+// TODO: define as a class, export an instance
 export const createClient = (): WERPClient => {
 	if (detectContext() === "service_worker") {
 		throw new Error("Can't use client in background worker context. Use subscriptions instead");
@@ -24,69 +27,44 @@ export const createClient = (): WERPClient => {
 
 	const listeners = new Map<string, (result: unknown) => void>();
 
-	const createPort = () => {
-		const port = browser.runtime.connect({ name: WERPC_NAMESPACE });
+	const onMessage = (message: unknown) => {
+		const r = v.safeParse(bridgeEventSchema, message);
 
-		// logger.warn("Connected to port", port.name);
-
-		port.onMessage.addListener(message => {
-			const r = v.safeParse(bridgeEventSchema, message);
-
-			if (!r.success) {
-				return;
-			}
-
-			const {
-				// TODO: handle idempotency?
-				// idempotencyKey,
-				id,
-				namespace,
-				type,
-				output,
-			} = r.output.werpc;
-
-			const namespacedKey = `${namespace}:${id}`;
-
-			if (type === "subscription.stop") {
-				listeners.delete(namespacedKey);
-			} else if (type === "subscription.output") {
-				const cb = listeners.get(namespacedKey);
-				cb?.(output);
-			} else {
-				const cb = listeners.get(namespacedKey);
-				listeners.delete(namespacedKey);
-				cb?.(output);
-			}
-		});
-
-		port.onDisconnect.addListener(() => {
-			// logger.warn("Disconnected from port", port.name);
-			reconnect();
-		});
-
-		return port;
-	};
-
-	let port = createPort();
-
-	const reconnect = () => {
-		try {
-			port.disconnect();
-		} catch {
-			/* empty */
+		if (!r.success) {
+			return;
 		}
 
-		port = createPort();
-		// updatePort(port);
+		const {
+			// TODO: handle idempotency?
+			// idempotencyKey,
+			id,
+			namespace,
+			type,
+			output,
+		} = r.output.werpc_event;
 
-		// logger.log("Reconnected to port", port.name);
+		const namespacedKey = `${namespace}:${id}`;
+
+		if (type === "subscription.stop") {
+			listeners.delete(namespacedKey);
+		} else if (type === "subscription.output") {
+			const cb = listeners.get(namespacedKey);
+			cb?.(output);
+		} else {
+			const cb = listeners.get(namespacedKey);
+			listeners.delete(namespacedKey);
+			cb?.(output);
+		}
 	};
 
-	// const updatePort = (port: browser.Runtime.Port) => {
-	// 	for (const client of clients.values()) {
-	// 		client.link.updatePort(port);
-	// 	}
-	// };
+	const port = WERPCPort.getInstance();
+	port.onMessage(onMessage);
+	// let port = portManager.port;
+	// port.onMessage.addListener(onMessage);
+	// portManager.onPortChanged(newPort => {
+	// 	port = newPort;
+	// 	port.onMessage.addListener(onMessage);
+	// });
 
 	const postMessage = (message: BridgeRequest) => {
 		port.postMessage(message);
