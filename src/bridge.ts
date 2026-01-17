@@ -21,7 +21,7 @@ export interface BridgeEventPayload<Output = unknown> {
 	clientId: string;
 	namespace: string;
 	id: number;
-	type: "output" | "subscription.output" | "subscription.stop";
+	type: "output" | "subscription.ack" | "subscription.output" | "subscription.stop";
 	output: Output;
 }
 

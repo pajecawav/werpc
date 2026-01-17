@@ -30,11 +30,11 @@ export const pingAll = (namespace: string) => {
 			if (typeof document !== "undefined") {
 				const element = document.createElement("p");
 				element.textContent = `${peer}: waiting...`;
-				element.id = `status-${peer}`;
+				element.id = `${namespace}-status-${peer}`;
 				container.append(element);
 				client[peer].poll.subscribe(undefined, {
 					onData: data => {
-						const element = document.getElementById(`status-${peer}`);
+						const element = document.getElementById(`${namespace}-status-${peer}`);
 						if (element) {
 							element.textContent = `${peer}: ${data}`;
 						}
@@ -61,7 +61,7 @@ export const createHandler = <TNamespace extends string>(namespace: TNamespace) 
 			poll: werpc.procedure.subscription(async function* (opts) {
 				for (let i = 0; !opts.signal?.aborted; i++) {
 					yield `${i} ${Math.random().toFixed(3)} (tabId: ${opts.ctx.tabId})`;
-					await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
+					await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 				}
 			}),
 		}),

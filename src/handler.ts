@@ -37,11 +37,11 @@ let nextPortId = 1;
 
 // TODO: rewrite this clusterfuck to a class
 export const initHandler = <TNamespace extends string, TRouter extends AnyRouter>({
-	namespace,
+	namespace: handlerNamespace,
 	router,
 	debug,
 }: InitHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
-	const logger = createLogger(`[WERPC-HANDLER] [${namespace}]`, debug);
+	const logger = createLogger(`[WERPC-HANDLER] [${handlerNamespace}]`, debug);
 
 	const ports = new Set<PortLike>();
 
@@ -98,7 +98,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		const {
 			idempotencyKey,
 			clientId,
-			namespace: _namespace,
+			namespace: requestNamespace,
 			id,
 			path,
 			type,
@@ -110,7 +110,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			return;
 		}
 
-		if (_namespace !== namespace) {
+		if (requestNamespace !== handlerNamespace) {
 			broadcast(req.output);
 
 			return;
@@ -118,11 +118,10 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 		const sendEvent = (payload: BridgeEventPayload) => {
 			logger.debug("SENDING EVENT", payload);
-			const event: BridgeEvent = { werpc_event: payload };
-			broadcast(event);
+			broadcast({ werpc_event: payload });
 		};
 
-		const requestId = `${clientId}:${id}`;
+		const requestId = `${clientId}:${requestNamespace}:${id}`;
 
 		if (type === "subscription.stop") {
 			subscriptions.get(requestId)?.();
@@ -144,7 +143,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 		if (type === "subscription.start") {
 			if (subscriptions.has(requestId)) {
-				throw new Error(`Duplicate subscription with id ${id}`);
+				throw new Error(`Duplicate subscription with id ${requestId}`);
 			}
 
 			if (!isAsyncIterable(output) && !isObservable(output)) {
@@ -157,11 +156,20 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 			subscriptions.set(requestId, () => ac.abort());
 
+			sendEvent({
+				idempotencyKey: createIdempotencyKey(),
+				clientId,
+				namespace: handlerNamespace,
+				id,
+				type: "subscription.ack",
+				output: {},
+			});
+
 			for await (const chunk of iterable) {
 				sendEvent({
 					idempotencyKey: createIdempotencyKey(),
 					clientId,
-					namespace,
+					namespace: handlerNamespace,
 					id,
 					type: "subscription.output",
 					output: chunk,
@@ -171,7 +179,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
 				clientId,
-				namespace,
+				namespace: handlerNamespace,
 				id,
 				type: "subscription.stop",
 				output: {},
@@ -180,7 +188,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
 				clientId,
-				namespace,
+				namespace: handlerNamespace,
 				id,
 				type: "output",
 				output,
@@ -221,5 +229,5 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		});
 	});
 
-	return { namespace, router };
+	return { namespace: handlerNamespace, router };
 };

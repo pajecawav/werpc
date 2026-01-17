@@ -17,6 +17,7 @@ export default defineConfig({
 		},
 	},
 	output: {
+		minify: false,
 		sourceMap: true,
 		filenameHash: false,
 		distPath: {

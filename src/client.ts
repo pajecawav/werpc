@@ -3,10 +3,12 @@ import { AnyRouter } from "@trpc/server";
 import * as v from "valibot";
 import { bridgeEventSchema, BridgeRequest } from "./bridge";
 import { detectContext } from "./detect";
-import { createWERPCLink, WERPCLink } from "./link";
+import { createWERPCLink, LinkEvents, WERPCLink } from "./link";
 import { WERPCPort } from "./port";
 import { WERPCNamespaces } from "./types";
 import { createIdempotencyKey } from "./idempotency/key";
+import { EventEmitter } from "./events";
+import { IdempotencyManager } from "./idempotency/manager";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
@@ -24,7 +26,9 @@ export const createClient = (): WERPClient => {
 	}
 
 	const clientId = createIdempotencyKey();
-	const listeners = new Map<string, (result: unknown) => void>();
+	const events = new EventEmitter<LinkEvents>();
+
+	const idempotencyManager = new IdempotencyManager();
 
 	const onMessage = (message: unknown) => {
 		const r = v.safeParse(bridgeEventSchema, message);
@@ -34,8 +38,7 @@ export const createClient = (): WERPClient => {
 		}
 
 		const {
-			// TODO: handle idempotency?
-			// idempotencyKey,
+			idempotencyKey,
 			clientId: eventClientId,
 			id,
 			namespace,
@@ -43,21 +46,28 @@ export const createClient = (): WERPClient => {
 			output,
 		} = r.output.werpc_event;
 
-		if (eventClientId !== clientId) {
+		if (eventClientId !== clientId || idempotencyManager.isDuplicate(idempotencyKey)) {
 			return;
 		}
 
-		const namespacedKey = `${namespace}:${id}`;
+		const namespacedKey = `${namespace}:${id}` as const;
 
-		if (type === "subscription.stop") {
-			listeners.delete(namespacedKey);
-		} else if (type === "subscription.output") {
-			const cb = listeners.get(namespacedKey);
-			cb?.(output);
-		} else {
-			const cb = listeners.get(namespacedKey);
-			listeners.delete(namespacedKey);
-			cb?.(output);
+		switch (type) {
+			case "subscription.ack":
+				events.emit(`${namespacedKey}:sub_ack`);
+				break;
+			case "subscription.stop":
+				// TODO: this is probably incorrect because link should notify observer when subscription is stopped
+				// need to figure out a proper way to handle client/server stopping subscription
+				events.offAll(`${namespacedKey}:event`);
+				break;
+			case "subscription.output":
+				events.emit(`${namespacedKey}:event`, output);
+				break;
+			case "output":
+				events.emit(`${namespacedKey}:event`, output);
+				// events.offAll(`${namespacedKey}:event`);
+				break;
 		}
 	};
 
@@ -81,7 +91,7 @@ export const createClient = (): WERPClient => {
 				return existingClient.client;
 			}
 
-			const link = createWERPCLink({ clientId, namespace, listeners, postMessage });
+			const link = createWERPCLink({ clientId, namespace, events, postMessage });
 			const client = createTRPCClient({ links: [link] });
 
 			clients.set(namespace, { client, link });
