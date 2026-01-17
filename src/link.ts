@@ -2,7 +2,7 @@ import { TRPCLink } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { BridgeRequest } from "./bridge";
-import { createIdempotencyKey } from "./key";
+import { createIdempotencyKey } from "./idempotency/key";
 
 interface CreateWERPCLinkOptions {
 	namespace: string;

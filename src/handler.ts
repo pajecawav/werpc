@@ -10,13 +10,13 @@ import {
 	BridgeRequest,
 	bridgeRequestSchema,
 } from "./bridge";
-import { IDEMPOTENCY_KEY_TTL_MS, WERPC_NAMESPACE } from "./constants";
+import { WERPC_NAMESPACE } from "./constants";
 import { WERPCContext } from "./context";
-import { createIdempotencyKey } from "./key";
+import { detectContext } from "./detect";
+import { IdempotencyManager } from "./idempotency/manager";
+import { createIdempotencyKey } from "./idempotency/key";
 import { createLogger } from "./logger";
 import { WERPCPort } from "./port";
-import { detectContext } from "./detect";
-// import { portManager } from "./portManager";
 
 interface PortLike {
 	postMessage(message: unknown): void;
@@ -35,6 +35,7 @@ export interface WERPCHandler<TNamespace extends string, TRouter extends AnyRout
 
 let nextPortId = 1;
 
+// TODO: rewrite this clusterfuck to a class
 export const initHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace,
 	router,
@@ -44,30 +45,17 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 	const ports = new Set<PortLike>();
 
-	const seenIdempotencyKeys = new Set<string>();
+	const idempotencyManager = new IdempotencyManager();
 
 	// TODO: keys should include namespace and probably port id???
 	const subscriptions = new Map<string, VoidFunction>();
-
-	// TODO: для работы content скриптов тут надо ещё слушать browser.tabs.onMessage
-	// или сделать общий PortManager который будет всегда коннектиться и переиспользовать его в client/handler
-	browser.runtime.onMessage.addListener((message => {
-		logger.debug("DIRECT message received", message);
-	}) satisfies browser.Runtime.OnMessageListenerNoResponse);
-
-	// ports.add(browser.runtime.connect({ name: WERPC_NAMESPACE }));
-	// ports.add(portManager.port);
-	// portManager.onPortChanged((newPort, prevPort) => {
-	// 	ports.add(newPort);
-	// 	ports.delete(prevPort);
-	// });
 
 	if (detectContext() !== "service_worker") {
 		const werpcPort = WERPCPort.getInstance();
 		ports.add(werpcPort);
 
 		werpcPort.onMessage((message, sender) => {
-			void onMessage(message, werpcPort, sender);
+			void onMessage(message, sender);
 
 			return "ack";
 		});
@@ -76,46 +64,24 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 	/*
 	 * Broadcast message to connected ports
 	 */
-	const broadcastRequest = (
-		request: BridgeRequest | BridgeEvent,
-		// tabId?: number
-	) => {
+	const broadcast = (request: BridgeRequest | BridgeEvent) => {
 		logger.debug(`broadcasting`, request, ports.size);
 		for (const p of ports) {
-			// TODO: resend to options?
-			// if (
-			// 	p !== port
-			// 	// && p.sender?.tab?.id === tabId
-			// 	// && p.sender?.url?.startsWith("chrome-extension://")
-			// ) {
 			void p.postMessage(request);
-			// }
 		}
-
-		// if (tabId) {
-		// 	// broadcast to content scripts in the same tab
-		// 	logger.debug(`broadcasting to tab ${tabId}`, request);
-		// 	void browser.tabs.sendMessage(tabId, request);
-		// }
 	};
 
 	const onMessage = async (
 		message: unknown,
-		port: PortLike,
 		sender: browser.Runtime.MessageSender | undefined,
 	) => {
 		logger.debug("port message received", message);
 
 		const ev = v.safeParse(bridgeEventSchema, message);
 		if (ev.success) {
-			const idempotencyKey = ev.output.werpc_event.idempotencyKey;
-			if (seenIdempotencyKeys.has(idempotencyKey)) {
-				logger.debug("skipping duplicate message", message);
-				return;
+			if (!idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
+				broadcast(ev.output);
 			}
-			seenIdempotencyKeys.add(idempotencyKey);
-			setTimeout(() => seenIdempotencyKeys.delete(idempotencyKey), IDEMPOTENCY_KEY_TTL_MS);
-			broadcastRequest(ev.output);
 			return;
 		}
 
@@ -137,25 +103,21 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			input,
 		} = req.output.werpc_request;
 
-		if (seenIdempotencyKeys.has(idempotencyKey)) {
+		if (idempotencyManager.isDuplicate(idempotencyKey)) {
 			logger.debug("skipping duplicate message", message);
 			return;
 		}
-		seenIdempotencyKeys.add(idempotencyKey);
-		setTimeout(() => seenIdempotencyKeys.delete(idempotencyKey), IDEMPOTENCY_KEY_TTL_MS);
 
 		if (_namespace !== namespace) {
-			broadcastRequest(req.output /* tabId */);
+			broadcast(req.output);
 
 			return;
 		}
 
 		const sendEvent = (payload: BridgeEventPayload) => {
-			// TODO: this should broadcast to all ports?
 			logger.debug("SENDING EVENT", payload);
 			const event: BridgeEvent = { werpc_event: payload };
-			// port.postMessage(event);
-			broadcastRequest(event);
+			broadcast(event);
 		};
 
 		const requestId = id.toString();
@@ -233,11 +195,8 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		const tabId = port.sender?.tab?.id;
 		const isContentScriptOrOptions = tabId !== undefined;
 
-		// TODO: uncomment?
-		// if (isContentScriptOrOptions) {
 		logger.debug("adding port", portId);
 		ports.add(port);
-		// }
 
 		logger.debug(
 			`Port connected ${portId}, tabId: ${tabId}, isContentScriptOrOptions: ${isContentScriptOrOptions}, url: ${port.sender?.url}`,
@@ -250,7 +209,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		});
 
 		port.onMessage.addListener(message => {
-			void onMessage(message, port, port.sender);
+			void onMessage(message, port.sender);
 
 			return "ack";
 		});

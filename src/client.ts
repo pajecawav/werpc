@@ -1,14 +1,11 @@
 import { createTRPCClient, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import * as v from "valibot";
-// import browser from "webextension-polyfill";
 import { bridgeEventSchema, BridgeRequest } from "./bridge";
-// import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
 import { createWERPCLink, WERPCLink } from "./link";
-import { WERPCNamespaces } from "./types";
 import { WERPCPort } from "./port";
-// import { portManager } from "./portManager";
+import { WERPCNamespaces } from "./types";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
@@ -59,12 +56,6 @@ export const createClient = (): WERPClient => {
 
 	const port = WERPCPort.getInstance();
 	port.onMessage(onMessage);
-	// let port = portManager.port;
-	// port.onMessage.addListener(onMessage);
-	// portManager.onPortChanged(newPort => {
-	// 	port = newPort;
-	// 	port.onMessage.addListener(onMessage);
-	// });
 
 	const postMessage = (message: BridgeRequest) => {
 		port.postMessage(message);
