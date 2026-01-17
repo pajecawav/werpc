@@ -15,10 +15,9 @@ export const pingAll = (namespace: string) => {
 	if (namespace !== "background") {
 		const container = document.createElement("div");
 		container.style.border = "1px solid black";
+		container.style.minWidth = "500px";
 
 		const log = (...args: unknown[]) => {
-			console.log(`[${namespace}] GOT RESPONSE`, ...args);
-
 			if (typeof document !== "undefined") {
 				container.innerHTML += `<p>${args.join(" ")}</p>`;
 			}
@@ -37,6 +36,12 @@ export const pingAll = (namespace: string) => {
 						const element = document.getElementById(`${namespace}-status-${peer}`);
 						if (element) {
 							element.textContent = `${peer}: ${data}`;
+						}
+					},
+					onComplete: () => {
+						const element = document.getElementById(`${namespace}-status-${peer}`);
+						if (element) {
+							element.textContent += " (completed)";
 						}
 					},
 				});
@@ -59,7 +64,7 @@ export const createHandler = <TNamespace extends string>(namespace: TNamespace) 
 				({ ctx }) => `pong from ${namespace} (tabId: ${ctx.tabId})`,
 			),
 			poll: werpc.procedure.subscription(async function* (opts) {
-				for (let i = 0; !opts.signal?.aborted; i++) {
+				for (let i = 0; !opts.signal?.aborted && i < 4; i++) {
 					yield `${i} ${Math.random().toFixed(3)} (tabId: ${opts.ctx.tabId})`;
 					await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 				}

@@ -110,7 +110,6 @@ export const createWERPCLink = ({
 				}
 
 				return () => {
-					// observer.complete();
 					postMessage({
 						werpc_request: {
 							...common,

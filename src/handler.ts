@@ -14,7 +14,6 @@ import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
 import { createIdempotencyKey } from "./idempotency/key";
 import { IdempotencyManager } from "./idempotency/manager";
-import { createLogger } from "./logger";
 import { WERPCPort } from "./port";
 import { WERPCContext } from "./werpc";
 
@@ -33,15 +32,13 @@ export interface WERPCHandler<TNamespace extends string, TRouter extends AnyRout
 	router: TRouter;
 }
 
-let nextPortId = 1;
-
 // TODO: rewrite this clusterfuck to a class
 export const initHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace: handlerNamespace,
 	router,
-	debug,
+	// debug,
 }: InitHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
-	const logger = createLogger(`[WERPC-HANDLER] [${handlerNamespace}]`, debug);
+	// const logger = createLogger(`[WERPC-HANDLER] [${handlerNamespace}]`, debug);
 
 	const ports = new Set<PortLike>();
 
@@ -64,8 +61,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 	 * Broadcast message to connected ports
 	 */
 	const broadcast = (request: BridgeRequest | BridgeEvent) => {
-		logger.debug(`broadcasting`, request, ports.size);
-
 		for (const p of ports) {
 			p.postMessage(request);
 		}
@@ -75,8 +70,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		message: unknown,
 		sender: browser.Runtime.MessageSender | undefined,
 	) => {
-		logger.debug("port message received", message);
-
 		const ev = v.safeParse(bridgeEventSchema, message);
 		if (ev.success) {
 			if (!idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
@@ -92,8 +85,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 		const tabId = sender?.tab?.id;
 
-		logger.debug("handling message", message);
-
 		const {
 			idempotencyKey,
 			clientId,
@@ -105,7 +96,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		} = req.output.werpc_request;
 
 		if (idempotencyManager.isDuplicate(idempotencyKey)) {
-			logger.debug("skipping duplicate message", message);
 			return;
 		}
 
@@ -116,7 +106,6 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		}
 
 		const sendEvent = (payload: BridgeEventPayload) => {
-			logger.debug("SENDING EVENT", payload);
 			broadcast({ werpc_event: payload });
 		};
 
@@ -203,21 +192,9 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			return;
 		}
 
-		const portId = nextPortId++;
-		const tabId = port.sender?.tab?.id;
-		const isContentScriptOrOptions = tabId !== undefined;
-
-		logger.debug("adding port", portId);
 		ports.add(port);
 
-		logger.debug(
-			`Port connected ${portId}, tabId: ${tabId}, isContentScriptOrOptions: ${isContentScriptOrOptions}, url: ${port.sender?.url}`,
-		);
-
 		port.onDisconnect.addListener(() => {
-			// TODO: should remove subscriptitons for the port
-			// TODO: also shouldn't really remove subscription because ports are persistent
-			// subscriptions.forEach(unsub => unsub());
 			ports.delete(port);
 		});
 
