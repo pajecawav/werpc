@@ -27,7 +27,6 @@ export const createClient = (): WERPClient => {
 
 	const clientId = createIdempotencyKey();
 	const events = new EventEmitter<LinkEvents>();
-
 	const idempotencyManager = new IdempotencyManager();
 
 	const onMessage = (message: unknown) => {
@@ -37,37 +36,10 @@ export const createClient = (): WERPClient => {
 			return;
 		}
 
-		const {
-			idempotencyKey,
-			clientId: eventClientId,
-			id,
-			namespace,
-			type,
-			output,
-		} = r.output.werpc_event;
+		const event = r.output.werpc_event;
 
-		if (eventClientId !== clientId || idempotencyManager.isDuplicate(idempotencyKey)) {
-			return;
-		}
-
-		const namespacedKey = `${namespace}:${id}` as const;
-
-		switch (type) {
-			case "subscription.ack":
-				events.emit(`${namespacedKey}:sub_ack`);
-				break;
-			case "subscription.stop":
-				// TODO: this is probably incorrect because link should notify observer when subscription is stopped
-				// need to figure out a proper way to handle client/server stopping subscription
-				events.offAll(`${namespacedKey}:event`);
-				break;
-			case "subscription.output":
-				events.emit(`${namespacedKey}:event`, output);
-				break;
-			case "output":
-				events.emit(`${namespacedKey}:event`, output);
-				// events.offAll(`${namespacedKey}:event`);
-				break;
+		if (event.clientId === clientId && !idempotencyManager.isDuplicate(event.idempotencyKey)) {
+			events.emit(`${event.namespace}:${event.id}`, event);
 		}
 	};
 
