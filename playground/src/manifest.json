@@ -5,6 +5,7 @@
 	"version": "0.0.0",
 	"manifest_version": 3,
 	"host_permissions": ["http://*/*", "https://*/*"],
+	"permissions": ["offscreen"],
 	"devtools_page": "devtools.html",
 	"background": {
 		"service_worker": "background.js",

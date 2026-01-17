@@ -6,6 +6,7 @@ const namespaces = [
 	"content2",
 	"devtools",
 	"devtoolsPanel",
+	"offscreen",
 	"options",
 	"popup",
 ] as const;

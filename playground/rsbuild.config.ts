@@ -9,6 +9,7 @@ export default defineConfig({
 				import: "./src/background.ts",
 				html: false,
 			},
+			offscreen: "./src/offscreen.ts",
 			options: "./src/options.ts",
 			popup: "./src/popup.ts",
 			content: "./src/content.ts",
