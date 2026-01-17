@@ -19,6 +19,7 @@ export default defineConfig({
 		sourceMap: true,
 		filenameHash: false,
 		distPath: {
+			root: "dist",
 			js: "./",
 			jsAsync: "./",
 		},

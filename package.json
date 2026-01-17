@@ -27,7 +27,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"dev": "tsdown --watch",
-		"play": "pnpm --filter playground ",
+		"play": "pnpm --filter=playground dev",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage",

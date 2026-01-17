@@ -1,16 +1,21 @@
 {
-	"name": "werpc-pcplayground",
+	"name": "playground",
 	"private": true,
 	"version": "0.0.0",
+	"type": "module",
 	"scripts": {
+		"dev": "cross-env FORCE_COLOR=1 run-p -l watch start:chromium",
 		"build": "rsbuild build",
 		"watch": "rsbuild build --watch",
-		"start": "web-ext run -s playground/dist -t chromium"
+		"start:chromium": "web-ext run -s dist -t chromium",
+		"start:firefox": "web-ext run -s dist -t firefox-desktop"
 	},
 	"dependencies": {
 		"werpc": "workspace:*"
 	},
 	"devDependencies": {
+		"cross-env": "^10.1.0",
+		"npm-run-all2": "^8.0.4",
 		"webextension-polyfill": "^0.12.0"
 	}
 }
