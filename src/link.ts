@@ -34,50 +34,32 @@ export const createWERPCLink = ({
 					}
 				});
 
+				const common = {
+					clientId,
+					namespace,
+					idempotencyKey: createIdempotencyKey(),
+					id,
+					path,
+					input,
+				};
+
 				signal?.addEventListener("abort", () => {
 					listeners.delete(listenerKey);
+					// TODO: ??????
 					// observer.next({ result: { type: "stopped" } });
 					postMessage({
-						werpc_request: {
-							clientId,
-							namespace,
-							idempotencyKey: createIdempotencyKey(),
-							id,
-							path,
-							input,
-							type: "subscription.stop",
-						},
+						werpc_request: { ...common, type: "subscription.stop" },
 					} satisfies BridgeRequest);
 				});
 
 				let request: BridgeRequest;
 				if (type === "subscription") {
-					request = {
-						werpc_request: {
-							clientId,
-							idempotencyKey: createIdempotencyKey(),
-							namespace,
-							id,
-							path,
-							input,
-							type: "subscription.start",
-						},
-					};
+					request = { werpc_request: { ...common, type: "subscription.start" } };
 
 					// TODO: we need to ACK subscription and retry it after some time
 					observer.next({ result: { type: "started" } });
 				} else {
-					request = {
-						werpc_request: {
-							clientId,
-							idempotencyKey: createIdempotencyKey(),
-							namespace,
-							id,
-							path,
-							input,
-							type,
-						},
-					};
+					request = { werpc_request: { ...common, type } };
 				}
 
 				postMessage(request);
