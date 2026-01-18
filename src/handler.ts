@@ -106,8 +106,8 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			return;
 		}
 
-		const { context, path, type, input } = req.output.werpc_request;
-		const { clientId, namespace: requestNamespace, id, scopeToTab } = context;
+		const { context, id, path, type, input } = req.output.werpc_request;
+		const { clientId, namespace: requestNamespace, scopeToTab } = context;
 
 		const tabId = context.tabId ?? sender?.tab?.id;
 		const targetTabId = scopeToTab ? tabId : undefined;
@@ -161,7 +161,6 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			const context: BridgeContext = {
 				clientId,
 				namespace: handlerNamespace,
-				id,
 				tabId,
 				scopeToTab,
 			};
@@ -169,6 +168,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
 				context,
+				id,
 				type: "subscription.ack",
 				output: {},
 			});
@@ -177,6 +177,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 				sendEvent({
 					idempotencyKey: createIdempotencyKey(),
 					context,
+					id,
 					type: "subscription.output",
 					output: chunk,
 				});
@@ -185,6 +186,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
 				context,
+				id,
 				type: "subscription.stop",
 				output: {},
 			});
@@ -192,6 +194,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
 				context,
+				id,
 				type: "output",
 				output,
 			});

@@ -41,7 +41,7 @@ export const createClient = ({ scopeToTab }: CreateClientOptions = {}): WERPClie
 			event.context.clientId === clientId &&
 			!idempotencyManager.isDuplicate(event.idempotencyKey)
 		) {
-			events.emit(`${event.context.namespace}:${event.context.id}`, event);
+			events.emit(`${event.context.namespace}:${event.id}`, event);
 		}
 	};
 

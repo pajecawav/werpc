@@ -39,10 +39,10 @@ export const createWERPCLink = ({
 					context: {
 						clientId,
 						namespace,
-						id,
 						tabId: undefined,
 						scopeToTab,
 					} satisfies BridgeContext,
+					id,
 					path,
 					input,
 				};
