@@ -15,11 +15,12 @@ export type WERPClient = {
 };
 
 export interface CreateClientOptions {
+	clientName?: string;
 	scopeToTab?: boolean;
 }
 
 // TODO: define as a class, export an instance
-export const createClient = ({ scopeToTab }: CreateClientOptions = {}): WERPClient => {
+export const createClient = ({ clientName, scopeToTab }: CreateClientOptions = {}): WERPClient => {
 	if (detectContext() === "service_worker") {
 		throw new Error("Can't use client in background worker context. Use subscriptions instead");
 	}
@@ -67,10 +68,11 @@ export const createClient = ({ scopeToTab }: CreateClientOptions = {}): WERPClie
 
 			const link = createWERPCLink({
 				clientId,
+				clientName,
 				namespace,
+				scopeToTab,
 				events,
 				postRequest: postMessage,
-				scopeToTab,
 			});
 			const client = createTRPCClient({ links: [link] });
 

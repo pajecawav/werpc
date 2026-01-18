@@ -3,6 +3,7 @@ import * as v from "valibot";
 export interface BridgeContext {
 	// TODO: add something like client name and pass it to trpc handlers
 	clientId: string;
+	clientName: string | undefined;
 	namespace: string;
 	tabId: number | undefined;
 	scopeToTab: boolean | undefined;

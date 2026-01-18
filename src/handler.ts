@@ -107,7 +107,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 		}
 
 		const { context, id, path, type, input } = req.output.werpc_request;
-		const { clientId, namespace: requestNamespace, scopeToTab } = context;
+		const { clientId, clientName, namespace: requestNamespace, scopeToTab } = context;
 
 		const tabId = context.tabId ?? sender?.tab?.id;
 		const targetTabId = scopeToTab ? tabId : undefined;
@@ -133,7 +133,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 
 		const ac = new AbortController();
 
-		const ctx: WERPCContext = { tabId };
+		const ctx: WERPCContext = { clientName, tabId };
 		const caller = router.createCaller(ctx, { signal: ac.signal });
 		const handler = path
 			.split(".")
@@ -160,6 +160,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 
 			const context: BridgeContext = {
 				clientId,
+				clientName,
 				namespace: handlerNamespace,
 				tabId,
 				scopeToTab,

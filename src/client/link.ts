@@ -13,22 +13,23 @@ export type LinkEvents = {
 	[Key in NamespacedKey]: [event: BridgeEventPayload];
 };
 
-interface CreateWERPCLinkOptions {
-	clientId: string;
-	namespace: string;
+interface CreateWERPCLinkOptions extends Pick<
+	BridgeContext,
+	"clientId" | "clientName" | "namespace" | "scopeToTab"
+> {
 	postRequest: (request: BridgeRequest) => void;
 	events: EventEmitter<LinkEvents>;
-	scopeToTab?: boolean;
 }
 
 export type WERPCLink = TRPCLink<AnyRouter>;
 
 export const createWERPCLink = ({
 	clientId,
+	clientName,
+	scopeToTab,
 	namespace,
 	postRequest,
 	events,
-	scopeToTab,
 }: CreateWERPCLinkOptions): WERPCLink => {
 	return () =>
 		({ op }) => {
@@ -38,6 +39,7 @@ export const createWERPCLink = ({
 				const common = {
 					context: {
 						clientId,
+						clientName,
 						namespace,
 						tabId: undefined,
 						scopeToTab,

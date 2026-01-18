@@ -24,7 +24,7 @@ export const pingAll = (namespace: string) => {
 		};
 
 		const scopeToTab = namespace.startsWith("content");
-		const client = createClient({ scopeToTab });
+		const client = createClient({ clientName: namespace, scopeToTab });
 
 		for (const peer of namespaces) {
 			if (typeof document !== "undefined") {
@@ -62,11 +62,12 @@ export const createHandler = <TNamespace extends string>(namespace: TNamespace) 
 		namespace,
 		router: werpc.router({
 			ping: werpc.procedure.query(
-				({ ctx }) => `pong from ${namespace} (tabId: ${ctx.tabId})`,
+				({ ctx }) =>
+					`pong from ${namespace} (tab: ${ctx.tabId}) (client: ${ctx.clientName})`,
 			),
 			poll: werpc.procedure.subscription(async function* (opts) {
 				for (let i = 0; !opts.signal?.aborted && i < 4; i++) {
-					yield `${i} ${Math.random().toFixed(3)} (tabId: ${opts.ctx.tabId})`;
+					yield `${i} ${Math.random().toFixed(3)} (tab: ${opts.ctx.tabId}) (client: ${opts.ctx.clientName})`;
 					await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 				}
 			}),
