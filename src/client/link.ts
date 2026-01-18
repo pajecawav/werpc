@@ -1,7 +1,7 @@
 import { TRPCLink } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import { BridgeEventPayload, BridgeRequest } from "../bridge";
+import { BridgeContext, BridgeEventPayload, BridgeRequest } from "../bridge";
 import { EventEmitter } from "../events";
 import { createIdempotencyKey } from "../idempotency/key";
 import { expectNever } from "../utils";
@@ -16,8 +16,9 @@ export type LinkEvents = {
 interface CreateWERPCLinkOptions {
 	clientId: string;
 	namespace: string;
-	postMessage: (request: BridgeRequest) => void;
+	postRequest: (request: BridgeRequest) => void;
 	events: EventEmitter<LinkEvents>;
+	scopeToTab?: boolean;
 }
 
 export type WERPCLink = TRPCLink<AnyRouter>;
@@ -25,21 +26,31 @@ export type WERPCLink = TRPCLink<AnyRouter>;
 export const createWERPCLink = ({
 	clientId,
 	namespace,
-	postMessage,
+	postRequest,
 	events,
+	scopeToTab,
 }: CreateWERPCLinkOptions): WERPCLink => {
 	return () =>
 		({ op }) => {
 			return observable(observer => {
 				const { id, path, input, type, signal } = op;
 
-				const namespacedKey: NamespacedKey = `${namespace}:${id}`;
-				const common = { clientId, namespace, id, path, input };
+				const common = {
+					context: {
+						clientId,
+						namespace,
+						id,
+						tabId: undefined,
+						scopeToTab,
+					} satisfies BridgeContext,
+					path,
+					input,
+				};
 
 				signal?.addEventListener("abort", () => {
 					unsubscribe();
 
-					postMessage({
+					postRequest({
 						werpc_request: {
 							...common,
 							idempotencyKey: createIdempotencyKey(),
@@ -50,7 +61,7 @@ export const createWERPCLink = ({
 
 				let subscriptionTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
 
-				const unsubscribe = events.on(namespacedKey, event => {
+				const unsubscribe = events.on(`${namespace}:${id}`, event => {
 					switch (event.type) {
 						case "output":
 							observer.next({ result: { data: event.output } });
@@ -79,7 +90,7 @@ export const createWERPCLink = ({
 				switch (type) {
 					case "subscription": {
 						(function subscribe() {
-							postMessage({
+							postRequest({
 								werpc_request: {
 									...common,
 									idempotencyKey: createIdempotencyKey(),
@@ -95,7 +106,7 @@ export const createWERPCLink = ({
 
 					case "query":
 					case "mutation":
-						postMessage({
+						postRequest({
 							werpc_request: {
 								...common,
 								idempotencyKey: createIdempotencyKey(),
@@ -110,13 +121,13 @@ export const createWERPCLink = ({
 				}
 
 				return () => {
-					postMessage({
+					postRequest({
 						werpc_request: {
 							...common,
 							idempotencyKey: createIdempotencyKey(),
 							type: "subscription.stop",
 						},
-					} satisfies BridgeRequest);
+					});
 				};
 			});
 		};

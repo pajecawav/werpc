@@ -1,4 +1,4 @@
-import { createClient, initHandler, initWERPC } from "werpc";
+import { createClient, initWERPC, createHandler as werpcCreateHandler } from "werpc";
 
 const namespaces = [
 	"background",
@@ -23,7 +23,8 @@ export const pingAll = (namespace: string) => {
 			}
 		};
 
-		const client = createClient();
+		const scopeToTab = namespace.startsWith("content");
+		const client = createClient({ scopeToTab });
 
 		for (const peer of namespaces) {
 			if (typeof document !== "undefined") {
@@ -57,7 +58,7 @@ export const pingAll = (namespace: string) => {
 export const createHandler = <TNamespace extends string>(namespace: TNamespace) => {
 	const werpc = initWERPC();
 
-	return initHandler({
+	return werpcCreateHandler({
 		namespace,
 		router: werpc.router({
 			ping: werpc.procedure.query(

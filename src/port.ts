@@ -19,6 +19,10 @@ export class WERPCPort {
 		return this.instance;
 	};
 
+	public get sender() {
+		return this.port?.sender;
+	}
+
 	public onMessage = (cb: OnMessageListener) => {
 		this.ensure();
 		this.listeners.add(cb);

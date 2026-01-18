@@ -8,19 +8,18 @@ import { createIdempotencyKey } from "../idempotency/key";
 import { IdempotencyManager } from "../idempotency/manager";
 import { WERPCPort } from "../port";
 import { WERPCNamespaces } from "../types";
-import { createWERPCLink, LinkEvents, WERPCLink } from "./link";
+import { createWERPCLink, LinkEvents } from "./link";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
 };
 
-interface NamespacedWERPCClient {
-	client: TRPCClient<AnyRouter>;
-	link: WERPCLink;
+export interface CreateClientOptions {
+	scopeToTab?: boolean;
 }
 
 // TODO: define as a class, export an instance
-export const createClient = (): WERPClient => {
+export const createClient = ({ scopeToTab }: CreateClientOptions = {}): WERPClient => {
 	if (detectContext() === "service_worker") {
 		throw new Error("Can't use client in background worker context. Use subscriptions instead");
 	}
@@ -38,8 +37,11 @@ export const createClient = (): WERPClient => {
 
 		const event = r.output.werpc_event;
 
-		if (event.clientId === clientId && !idempotencyManager.isDuplicate(event.idempotencyKey)) {
-			events.emit(`${event.namespace}:${event.id}`, event);
+		if (
+			event.context.clientId === clientId &&
+			!idempotencyManager.isDuplicate(event.idempotencyKey)
+		) {
+			events.emit(`${event.context.namespace}:${event.context.id}`, event);
 		}
 	};
 
@@ -50,7 +52,7 @@ export const createClient = (): WERPClient => {
 		port.postMessage(message);
 	};
 
-	const clients = new Map<string, NamespacedWERPCClient>();
+	const clients = new Map<string, TRPCClient<AnyRouter>>();
 
 	return new Proxy({} as WERPClient, {
 		get(_, namespace) {
@@ -60,13 +62,19 @@ export const createClient = (): WERPClient => {
 
 			const existingClient = clients.get(namespace);
 			if (existingClient) {
-				return existingClient.client;
+				return existingClient;
 			}
 
-			const link = createWERPCLink({ clientId, namespace, events, postMessage });
+			const link = createWERPCLink({
+				clientId,
+				namespace,
+				events,
+				postRequest: postMessage,
+				scopeToTab,
+			});
 			const client = createTRPCClient({ links: [link] });
 
-			clients.set(namespace, { client, link });
+			clients.set(namespace, client);
 
 			return client;
 		},

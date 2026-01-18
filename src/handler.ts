@@ -4,6 +4,7 @@ import { isAsyncIterable } from "@trpc/server/unstable-core-do-not-import";
 import * as v from "valibot";
 import browser from "webextension-polyfill";
 import {
+	BridgeContext,
 	BridgeEvent,
 	BridgeEventPayload,
 	bridgeEventSchema,
@@ -19,9 +20,10 @@ import { WERPCContext } from "./werpc";
 
 interface PortLike {
 	postMessage(message: unknown): void;
+	sender?: browser.Runtime.MessageSender;
 }
 
-interface InitHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
+export interface CreateHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
 	namespace: TNamespace;
 	router: TRouter;
 	debug?: boolean;
@@ -33,11 +35,11 @@ export interface WERPCHandler<TNamespace extends string, TRouter extends AnyRout
 }
 
 // TODO: rewrite this clusterfuck to a class
-export const initHandler = <TNamespace extends string, TRouter extends AnyRouter>({
+export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace: handlerNamespace,
 	router,
 	// debug,
-}: InitHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
+}: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
 	// const logger = createLogger(`[WERPC-HANDLER] [${handlerNamespace}]`, debug);
 
 	const ports = new Set<PortLike>();
@@ -57,13 +59,24 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		});
 	}
 
+	// TODO: broadcasting should be a part of WERPCPort?
 	/*
 	 * Broadcast message to connected ports
 	 */
-	const broadcast = (request: BridgeRequest | BridgeEvent) => {
+	const broadcast = (request: BridgeRequest | BridgeEvent, targetTabId: number | undefined) => {
+		// if (detectContext() === "service_worker") {
 		for (const p of ports) {
-			p.postMessage(request);
+			const noTargetTab = targetTabId === undefined;
+			const portTabId = p.sender?.tab?.id;
+			const isTargetTab = portTabId === targetTabId;
+
+			if (noTargetTab || !portTabId || isTargetTab) {
+				p.postMessage(request);
+			}
 		}
+		// } else {
+		// 	WERPCPort.getInstance().postMessage(request);
+		// }
 	};
 
 	const onMessage = async (
@@ -73,7 +86,13 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 		const ev = v.safeParse(bridgeEventSchema, message);
 		if (ev.success) {
 			if (!idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
-				broadcast(ev.output);
+				ev.output.werpc_event.context.tabId ??= sender?.tab?.id;
+				broadcast(
+					ev.output,
+					ev.output.werpc_event.context.scopeToTab
+						? ev.output.werpc_event.context.tabId
+						: undefined,
+				);
 			}
 			return;
 		}
@@ -83,30 +102,25 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			return;
 		}
 
-		const tabId = sender?.tab?.id;
-
-		const {
-			idempotencyKey,
-			clientId,
-			namespace: requestNamespace,
-			id,
-			path,
-			type,
-			input,
-		} = req.output.werpc_request;
-
-		if (idempotencyManager.isDuplicate(idempotencyKey)) {
+		if (idempotencyManager.isDuplicate(req.output.werpc_request.idempotencyKey)) {
 			return;
 		}
 
+		const { context, path, type, input } = req.output.werpc_request;
+		const { clientId, namespace: requestNamespace, id, scopeToTab } = context;
+
+		const tabId = context.tabId ?? sender?.tab?.id;
+		const targetTabId = scopeToTab ? tabId : undefined;
+
 		if (requestNamespace !== handlerNamespace) {
-			broadcast(req.output);
+			req.output.werpc_request.context.tabId = tabId;
+			broadcast(req.output, targetTabId);
 
 			return;
 		}
 
 		const sendEvent = (payload: BridgeEventPayload) => {
-			broadcast({ werpc_event: payload });
+			broadcast({ werpc_event: payload }, targetTabId);
 		};
 
 		const requestId = `${clientId}:${requestNamespace}:${id}`;
@@ -144,11 +158,17 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 			subscriptions.set(requestId, () => ac.abort());
 
-			sendEvent({
-				idempotencyKey: createIdempotencyKey(),
+			const context: BridgeContext = {
 				clientId,
 				namespace: handlerNamespace,
 				id,
+				tabId,
+				scopeToTab,
+			};
+
+			sendEvent({
+				idempotencyKey: createIdempotencyKey(),
+				context,
 				type: "subscription.ack",
 				output: {},
 			});
@@ -156,9 +176,7 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 			for await (const chunk of iterable) {
 				sendEvent({
 					idempotencyKey: createIdempotencyKey(),
-					clientId,
-					namespace: handlerNamespace,
-					id,
+					context,
 					type: "subscription.output",
 					output: chunk,
 				});
@@ -166,18 +184,14 @@ export const initHandler = <TNamespace extends string, TRouter extends AnyRouter
 
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
-				clientId,
-				namespace: handlerNamespace,
-				id,
+				context,
 				type: "subscription.stop",
 				output: {},
 			});
 		} else {
 			sendEvent({
 				idempotencyKey: createIdempotencyKey(),
-				clientId,
-				namespace: handlerNamespace,
-				id,
+				context,
 				type: "output",
 				output,
 			});
