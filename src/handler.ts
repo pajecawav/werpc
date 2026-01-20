@@ -59,7 +59,6 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 		});
 	}
 
-	// TODO: broadcasting should be a part of WERPCPort?
 	/*
 	 * Broadcast message to connected ports
 	 */
@@ -213,8 +212,13 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 
 		ports.add(port);
 
+		const intervalId = setInterval(() => {
+			void browser.runtime.getPlatformInfo();
+		}, 20_000);
+
 		port.onDisconnect.addListener(() => {
 			ports.delete(port);
+			clearInterval(intervalId);
 		});
 
 		port.onMessage.addListener(message => {
