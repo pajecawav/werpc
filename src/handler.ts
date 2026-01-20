@@ -205,6 +205,7 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 	// TODO: force-disconnect ports for keep-alive
 	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
 	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
+	// or https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
 	browser.runtime.onConnect.addListener(port => {
 		if (port.name !== WERPC_NAMESPACE) {
 			return;

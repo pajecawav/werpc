@@ -19,17 +19,44 @@ export interface CreateClientOptions {
 	scopeToTab?: boolean;
 }
 
-// TODO: define as a class, export an instance
-export const createClient = ({ clientName, scopeToTab }: CreateClientOptions = {}): WERPClient => {
-	if (detectContext() === "service_worker") {
-		throw new Error("Can't use client in background worker context. Use subscriptions instead");
+class ClientManager {
+	private clientId = createIdempotencyKey();
+	private events = new EventEmitter<LinkEvents>();
+	private idempotencyManager = new IdempotencyManager();
+	private port = WERPCPort.getInstance();
+	private clients = new Map<string, TRPCClient<AnyRouter>>();
+
+	public constructor(private options: CreateClientOptions) {
+		this.port.onMessage(this.onMessage);
 	}
 
-	const clientId = createIdempotencyKey();
-	const events = new EventEmitter<LinkEvents>();
-	const idempotencyManager = new IdempotencyManager();
+	public getClient<TNamespace extends keyof WERPCNamespaces>(
+		namespace: TNamespace,
+	): TRPCClient<WERPCNamespaces[TNamespace]> {
+		const existingClient = this.clients.get(namespace);
+		if (existingClient) {
+			return existingClient;
+		}
 
-	const onMessage = (message: unknown) => {
+		const link = createWERPCLink({
+			clientId: this.clientId,
+			clientName: this.options.clientName,
+			namespace,
+			scopeToTab: this.options.scopeToTab,
+			events: this.events,
+			postRequest: this.postMessage,
+		});
+		const client = createTRPCClient({ links: [link] });
+		this.clients.set(namespace, client);
+
+		return client;
+	}
+
+	private postMessage = (message: BridgeRequest) => {
+		this.port.postMessage(message);
+	};
+
+	private onMessage = (message: unknown) => {
 		const r = v.safeParse(bridgeEventSchema, message);
 
 		if (!r.success) {
@@ -39,21 +66,20 @@ export const createClient = ({ clientName, scopeToTab }: CreateClientOptions = {
 		const event = r.output.werpc_event;
 
 		if (
-			event.context.clientId === clientId &&
-			!idempotencyManager.isDuplicate(event.idempotencyKey)
+			event.context.clientId === this.clientId &&
+			!this.idempotencyManager.isDuplicate(event.idempotencyKey)
 		) {
-			events.emit(`${event.context.namespace}:${event.id}`, event);
+			this.events.emit(`${event.context.namespace}:${event.id}`, event);
 		}
 	};
+}
 
-	const port = WERPCPort.getInstance();
-	port.onMessage(onMessage);
+export const createClient = (options: CreateClientOptions = {}): WERPClient => {
+	if (detectContext() === "service_worker") {
+		throw new Error("Can't use client in background worker context. Use subscriptions instead");
+	}
 
-	const postMessage = (message: BridgeRequest) => {
-		port.postMessage(message);
-	};
-
-	const clients = new Map<string, TRPCClient<AnyRouter>>();
+	const clientManager = new ClientManager(options);
 
 	return new Proxy({} as WERPClient, {
 		get(_, namespace) {
@@ -61,24 +87,7 @@ export const createClient = ({ clientName, scopeToTab }: CreateClientOptions = {
 				throw new Error("Invalid namespace");
 			}
 
-			const existingClient = clients.get(namespace);
-			if (existingClient) {
-				return existingClient;
-			}
-
-			const link = createWERPCLink({
-				clientId,
-				clientName,
-				namespace,
-				scopeToTab,
-				events,
-				postRequest: postMessage,
-			});
-			const client = createTRPCClient({ links: [link] });
-
-			clients.set(namespace, client);
-
-			return client;
+			return clientManager.getClient(namespace as keyof WERPCNamespaces);
 		},
 	});
 };
