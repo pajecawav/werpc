@@ -26,51 +26,40 @@ interface PortLike {
 export interface CreateHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
 	namespace: TNamespace;
 	router: TRouter;
-	debug?: boolean;
 }
 
-export interface WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> {
-	namespace: TNamespace;
-	router: TRouter;
-}
+export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> {
+	private ports = new Set<PortLike>();
+	private idempotencyManager = new IdempotencyManager();
+	private subscriptions = new Map<string, VoidFunction>();
 
-// TODO: rewrite this clusterfuck to a class
-export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
-	namespace: handlerNamespace,
-	router,
-	// debug,
-}: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
-	// const logger = createLogger(`[WERPC-HANDLER] [${handlerNamespace}]`, debug);
+	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
+		if (detectContext() !== "service_worker") {
+			const werpcPort = WERPCPort.getInstance();
+			this.ports.add(werpcPort);
 
-	const ports = new Set<PortLike>();
+			werpcPort.onMessage((message, sender) => {
+				void this.onMessage(message, sender);
 
-	const idempotencyManager = new IdempotencyManager();
+				return "ack";
+			});
+		}
 
-	const subscriptions = new Map<string, VoidFunction>();
-
-	if (detectContext() !== "service_worker") {
-		const werpcPort = WERPCPort.getInstance();
-		ports.add(werpcPort);
-
-		werpcPort.onMessage((message, sender) => {
-			void onMessage(message, sender);
-
-			return "ack";
-		});
+		browser.runtime.onConnect.addListener(this.addPort);
 	}
 
 	/*
 	 * Broadcast message to connected ports
 	 */
-	const broadcast = (request: BridgeRequest | BridgeEvent, targetTabId: number | undefined) => {
+	private broadcast = (request: BridgeRequest | BridgeEvent, targetTabId: number | undefined) => {
 		// if (detectContext() === "service_worker") {
-		for (const p of ports) {
+		for (const port of this.ports) {
 			const noTargetTab = targetTabId === undefined;
-			const portTabId = p.sender?.tab?.id;
+			const portTabId = port.sender?.tab?.id;
 			const isTargetTab = portTabId === targetTabId;
 
 			if (noTargetTab || !portTabId || isTargetTab) {
-				p.postMessage(request);
+				port.postMessage(request);
 			}
 		}
 		// } else {
@@ -78,15 +67,67 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 		// }
 	};
 
-	const onMessage = async (
+	// TODO: force-disconnect ports for keep-alive
+	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
+	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
+	// or https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
+	private addPort = (port: browser.Runtime.Port) => {
+		if (port.name !== WERPC_NAMESPACE) {
+			return;
+		}
+
+		this.ports.add(port);
+
+		const intervalId = setInterval(() => {
+			void browser.runtime.getPlatformInfo();
+		}, 20_000);
+
+		port.onDisconnect.addListener(() => {
+			// TODO: this leaks subscriptions, probably need to implement keep-alive for subscriptions?
+			this.ports.delete(port);
+			clearInterval(intervalId);
+		});
+
+		port.onMessage.addListener(message => {
+			void this.onMessage(message, port.sender);
+
+			return "ack";
+		});
+	};
+
+	private processRequest = async ({
+		clientName,
+		tabId,
+		path,
+		input,
+		signal,
+	}: {
+		clientName?: string;
+		tabId?: number;
+		path: string;
+		input: unknown;
+		signal: AbortSignal;
+	}) => {
+		const ctx: WERPCContext = { clientName, tabId };
+		const caller = this.options.router.createCaller(ctx, { signal });
+		const handler = path
+			.split(".")
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
+			.reduce((c, segment) => c[segment], caller as any) as AnyProcedure;
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return
+		return await handler(input as any);
+	};
+
+	private onMessage = async (
 		message: unknown,
 		sender: browser.Runtime.MessageSender | undefined,
 	) => {
 		const ev = v.safeParse(bridgeEventSchema, message);
 		if (ev.success) {
-			if (!idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
+			if (!this.idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
 				ev.output.werpc_event.context.tabId ??= sender?.tab?.id;
-				broadcast(
+				this.broadcast(
 					ev.output,
 					ev.output.werpc_event.context.scopeToTab
 						? ev.output.werpc_event.context.tabId
@@ -101,49 +142,48 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			return;
 		}
 
-		if (idempotencyManager.isDuplicate(req.output.werpc_request.idempotencyKey)) {
+		const { idempotencyKey, context, id, path, type, input } = req.output.werpc_request;
+
+		if (this.idempotencyManager.isDuplicate(idempotencyKey)) {
 			return;
 		}
 
-		const { context, id, path, type, input } = req.output.werpc_request;
 		const { clientId, clientName, namespace: requestNamespace, scopeToTab } = context;
-
 		const tabId = context.tabId ?? sender?.tab?.id;
 		const targetTabId = scopeToTab ? tabId : undefined;
 
-		if (requestNamespace !== handlerNamespace) {
+		if (requestNamespace !== this.options.namespace) {
 			req.output.werpc_request.context.tabId = tabId;
-			broadcast(req.output, targetTabId);
+			this.broadcast(req.output, targetTabId);
 
 			return;
 		}
 
 		const sendEvent = (payload: BridgeEventPayload) => {
-			broadcast({ werpc_event: payload }, targetTabId);
+			this.broadcast({ werpc_event: payload }, targetTabId);
 		};
 
 		const requestId = `${clientId}:${requestNamespace}:${id}`;
 
 		if (type === "subscription.stop") {
-			subscriptions.get(requestId)?.();
-			subscriptions.delete(requestId);
+			this.subscriptions.get(requestId)?.();
+			this.subscriptions.delete(requestId);
 			return;
 		}
 
 		const ac = new AbortController();
 
-		const ctx: WERPCContext = { clientName, tabId };
-		const caller = router.createCaller(ctx, { signal: ac.signal });
-		const handler = path
-			.split(".")
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
-			.reduce((c, segment) => c[segment], caller as any) as AnyProcedure;
-
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument
-		const output = await handler(input as any);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+		const output = await this.processRequest({
+			clientName,
+			tabId,
+			path,
+			input,
+			signal: ac.signal,
+		});
 
 		if (type === "subscription.start") {
-			if (subscriptions.has(requestId)) {
+			if (this.subscriptions.has(requestId)) {
 				throw new Error(`Duplicate subscription with id ${requestId}`);
 			}
 
@@ -155,12 +195,12 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 				? observableToAsyncIterable(output, ac.signal)
 				: output;
 
-			subscriptions.set(requestId, () => ac.abort());
+			this.subscriptions.set(requestId, () => ac.abort());
 
 			const context: BridgeContext = {
 				clientId,
 				clientName,
-				namespace: handlerNamespace,
+				namespace: this.options.namespace,
 				tabId,
 				scopeToTab,
 			};
@@ -200,33 +240,11 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 			});
 		}
 	};
+}
 
-	// TODO: force-disconnect ports for keep-alive
-	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
-	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
-	// or https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
-	browser.runtime.onConnect.addListener(port => {
-		if (port.name !== WERPC_NAMESPACE) {
-			return;
-		}
-
-		ports.add(port);
-
-		const intervalId = setInterval(() => {
-			void browser.runtime.getPlatformInfo();
-		}, 20_000);
-
-		port.onDisconnect.addListener(() => {
-			ports.delete(port);
-			clearInterval(intervalId);
-		});
-
-		port.onMessage.addListener(message => {
-			void onMessage(message, port.sender);
-
-			return "ack";
-		});
-	});
-
-	return { namespace: handlerNamespace, router };
+export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
+	namespace: handlerNamespace,
+	router,
+}: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
+	return new WERPCHandler({ namespace: handlerNamespace, router });
 };

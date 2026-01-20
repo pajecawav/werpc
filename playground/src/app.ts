@@ -72,6 +72,5 @@ export const createHandler = <TNamespace extends string>(namespace: TNamespace) 
 				}
 			}),
 		}),
-		debug: true,
 	});
 };
