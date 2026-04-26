@@ -81,13 +81,16 @@ export const createClient = (options: CreateClientOptions = {}): WERPClient => {
 
 	const clientManager = new ClientManager(options);
 
-	return new Proxy({} as WERPClient, {
-		get(_, namespace) {
-			if (typeof namespace !== "string") {
-				throw new Error("Invalid namespace");
-			}
+	return new Proxy<WERPClient>(
+		{},
+		{
+			get(_, namespace) {
+				if (typeof namespace !== "string") {
+					throw new Error("Invalid namespace");
+				}
 
-			return clientManager.getClient(namespace as keyof WERPCNamespaces);
+				return clientManager.getClient(namespace as keyof WERPCNamespaces);
+			},
 		},
-	});
+	);
 };
