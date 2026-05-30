@@ -3,6 +3,7 @@
 	"version": "0.0.2",
 	"license": "MIT",
 	"type": "module",
+	"sideEffects": false,
 	"exports": {
 		".": "./dist/index.js",
 		"./package.json": "./package.json"
