@@ -1,6 +1,6 @@
 packages:
     - playground
-onlyBuiltDependencies:
-    - core-js
-    - esbuild
-    - spawn-sync
+allowBuilds:
+    core-js: true
+    esbuild: true
+    spawn-sync: true
