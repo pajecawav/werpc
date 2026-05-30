@@ -1,4 +1,3 @@
-import browser from "webextension-polyfill";
 import { InferNamespace } from "werpc";
 import { createHandler, pingAll } from "./app";
 
@@ -14,4 +13,4 @@ declare module "werpc" {
 
 pingAll(namespace);
 
-await browser.devtools.panels.create("werpc", "", "devtoolsPanel.html");
+chrome.devtools.panels.create("werpc", "", "devtoolsPanel.html");

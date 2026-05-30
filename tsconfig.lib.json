@@ -33,7 +33,9 @@
 		"noPropertyAccessFromIndexSignature": true,
 		"noUncheckedIndexedAccess": true,
 		"noUnusedLocals": true,
-		"noUnusedParameters": true
+		"noUnusedParameters": true,
+
+		"types": ["chrome-types"]
 
 		// TODO: aliases
 	},

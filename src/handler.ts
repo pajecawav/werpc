@@ -2,7 +2,6 @@ import { AnyProcedure, AnyRouter } from "@trpc/server";
 import { isObservable, observableToAsyncIterable } from "@trpc/server/observable";
 import { isAsyncIterable } from "@trpc/server/unstable-core-do-not-import";
 import * as v from "valibot";
-import browser from "webextension-polyfill";
 import {
 	BridgeContext,
 	BridgeEvent,
@@ -20,7 +19,7 @@ import { WERPCContext } from "./werpc";
 
 interface PortLike {
 	postMessage(message: unknown): void;
-	sender?: browser.Runtime.MessageSender;
+	sender?: chrome.runtime.MessageSender;
 }
 
 export interface CreateHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
@@ -45,7 +44,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			});
 		}
 
-		browser.runtime.onConnect.addListener(this.addPort);
+		chrome.runtime.onConnect.addListener(this.addPort);
 	}
 
 	/*
@@ -71,7 +70,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
 	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
 	// or https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
-	private addPort = (port: browser.Runtime.Port) => {
+	private addPort = (port: chrome.runtime.Port) => {
 		if (port.name !== WERPC_NAMESPACE) {
 			return;
 		}
@@ -79,7 +78,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 		this.ports.add(port);
 
 		const intervalId = setInterval(() => {
-			void browser.runtime.getPlatformInfo();
+			void chrome.runtime.getPlatformInfo();
 		}, 20_000);
 
 		port.onDisconnect.addListener(() => {
@@ -121,7 +120,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 
 	private onMessage = async (
 		message: unknown,
-		sender: browser.Runtime.MessageSender | undefined,
+		sender: chrome.runtime.MessageSender | undefined,
 	) => {
 		const ev = v.safeParse(bridgeEventSchema, message);
 		if (ev.success) {

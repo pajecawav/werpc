@@ -1,10 +1,9 @@
-import browser from "webextension-polyfill";
 import { WERPC_NAMESPACE } from "./constants";
 
-type OnMessageListener = (message: unknown, sender?: browser.Runtime.MessageSender) => void;
+type OnMessageListener = (message: unknown, sender?: chrome.runtime.MessageSender) => void;
 
 export class WERPCPort {
-	private port: browser.Runtime.Port | null = null;
+	private port: chrome.runtime.Port | null = null;
 	private listeners = new Set<OnMessageListener>();
 
 	private constructor() {}
@@ -38,7 +37,7 @@ export class WERPCPort {
 			return this.port;
 		}
 
-		this.port = browser.runtime.connect({ name: WERPC_NAMESPACE });
+		this.port = chrome.runtime.connect(undefined, { name: WERPC_NAMESPACE });
 		this.port.onMessage.addListener((message, port) => this.notify(message, port.sender));
 		this.port.onDisconnect.addListener(this.reconnect);
 
@@ -56,7 +55,7 @@ export class WERPCPort {
 		this.ensure();
 	};
 
-	private notify = (message: unknown, sender?: browser.Runtime.MessageSender) => {
+	private notify = (message: unknown, sender?: chrome.runtime.MessageSender) => {
 		this.listeners.forEach(listener => listener(message, sender));
 	};
 }

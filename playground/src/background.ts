@@ -1,9 +1,7 @@
 import { InferNamespace } from "werpc";
 import { createHandler, pingAll } from "./app";
 
-// @ts-expect-error TS-2304
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-chrome.offscreen.createDocument({
+await chrome.offscreen.createDocument({
 	url: "offscreen.html",
 	reasons: ["CLIPBOARD"],
 	justification: "reason for needing the document",
