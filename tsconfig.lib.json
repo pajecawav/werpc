@@ -39,5 +39,6 @@
 
 		// TODO: aliases
 	},
-	"include": ["src", "playground"]
+	"include": ["src", "playground"],
+	"exclude": ["playground/dist"]
 }

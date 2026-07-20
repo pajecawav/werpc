@@ -194,9 +194,7 @@ Subscriptions must return an `AsyncIterable` or `Observable`. Returning a plain 
 
 ```ts
 const unsub = client.background.poll.subscribe(
-    {
-        /* input */
-    },
+    {/* input */},
     {
         onData: data => console.log("chunk", data),
         onError: err => console.error(err),
