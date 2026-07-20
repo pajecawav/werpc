@@ -45,29 +45,29 @@
 		"prepublishOnly": "cross-env FORCE_COLOR=1 npm-run-all -p -l lint:* test -s build"
 	},
 	"dependencies": {
-		"@trpc/client": "^11.17.0",
-		"@trpc/server": "^11.17.0",
-		"nanoid": "^5.1.11",
-		"valibot": "^1.4.1"
+		"@trpc/client": "^11.18.0",
+		"@trpc/server": "^11.18.0",
+		"nanoid": "^6.0.0",
+		"valibot": "^1.4.2"
 	},
 	"devDependencies": {
 		"@pajecawav/tools": "^0.0.7",
-		"@rsbuild/core": "^2.0.8",
-		"@types/node": "^25.9.1",
-		"@vitest/coverage-v8": "^4.1.7",
-		"@vitest/ui": "^4.1.7",
-		"chrome-types": "^0.1.429",
+		"@rsbuild/core": "^2.1.6",
+		"@types/node": "^25.9.5",
+		"@vitest/coverage-v8": "^4.1.10",
+		"@vitest/ui": "^4.1.10",
+		"chrome-types": "^0.1.435",
 		"cross-env": "^10.1.0",
 		"husky": "^9.1.7",
-		"npm-run-all2": "^9.0.1",
+		"npm-run-all2": "^9.0.2",
 		"oxfmt": "^0.59.0",
 		"oxlint": "^1.74.0",
 		"oxlint-tsgolint": "^0.25.0",
 		"publint": "^0.3.21",
 		"tsdown": "^0.22.12",
 		"typescript": "^7.0.2",
-		"vitest": "^4.1.7",
-		"web-ext": "^10.3.0"
+		"vitest": "^4.1.10",
+		"web-ext": "^10.5.0"
 	},
 	"packageManager": "pnpm@11.5.0+sha512.dbfcc4f81cf48597afd4bc391ffdf12c11f1a9fb83a395bfa6b0a2d9cc2fd8ffebafdb1ccbd529632153f793904c2615b7f09fe1a345473fd1c35845172a8eb1"
 }

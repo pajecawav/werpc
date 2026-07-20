@@ -13,4 +13,4 @@ declare module "werpc" {
 
 pingAll(namespace);
 
-chrome.devtools.panels.create("werpc", "", "devtoolsPanel.html");
+void chrome.devtools.panels.create("werpc", "", "devtoolsPanel.html");
