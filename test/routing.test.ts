@@ -126,6 +126,8 @@ describe("routing", () => {
 
 	it("does not amplify messages: a query round-trip stays under a handful of hops", async () => {
 		const { ext, background } = setup();
+		// let the port handshakes from setup settle out of the measurement
+		await sleep(700);
 		const before = ext.messageCount;
 
 		await withTimeout(background.ping.query(), 2000, "ping");

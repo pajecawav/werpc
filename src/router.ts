@@ -3,6 +3,7 @@ import {
 	BridgeRequest,
 	isBridgeAnnounce,
 	isBridgeEvent,
+	isBridgeHello,
 	isBridgeRequest,
 	PROTOCOL_VERSION,
 } from "./bridge";
@@ -92,6 +93,13 @@ class Router {
 	};
 
 	public handleMessage = (message: unknown, fromPort: PortLike) => {
+		if (isBridgeHello(message)) {
+			// port handshake: the sender queues its messages until this ack,
+			// so nothing is lost while listeners are still being attached
+			safePost(fromPort, { werpc_hello_ack: { v: PROTOCOL_VERSION } });
+			return;
+		}
+
 		if (isBridgeAnnounce(message)) {
 			this.registerPortNamespace(message.werpc_announce.namespace, fromPort);
 			return;

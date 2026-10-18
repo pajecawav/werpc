@@ -62,6 +62,18 @@ export interface BridgeDrop {
 	};
 }
 
+export interface BridgeHello {
+	werpc_hello: {
+		v: number;
+	};
+}
+
+export interface BridgeHelloAck {
+	werpc_hello_ack: {
+		v: number;
+	};
+}
+
 const REQUEST_TYPES = new Set(["query", "mutation", "subscription.start", "subscription.stop"]);
 const EVENT_TYPES = new Set([
 	"output",
@@ -145,4 +157,18 @@ export const isBridgeDrop = (message: unknown): message is BridgeDrop => {
 	const drop = message["werpc_drop"];
 
 	return hasVersion(drop) && typeof drop["clientId"] === "string";
+};
+
+export const isBridgeHello = (message: unknown): message is BridgeHello => {
+	return (
+		isRecord(message) && isRecord(message["werpc_hello"]) && hasVersion(message["werpc_hello"])
+	);
+};
+
+export const isBridgeHelloAck = (message: unknown): message is BridgeHelloAck => {
+	return (
+		isRecord(message) &&
+		isRecord(message["werpc_hello_ack"]) &&
+		hasVersion(message["werpc_hello_ack"])
+	);
 };

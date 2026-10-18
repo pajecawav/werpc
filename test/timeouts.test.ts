@@ -111,12 +111,12 @@ describe("subscription retries", () => {
 					onComplete: () => resolve("done"),
 				}),
 			),
-			10_000,
+			25_000,
 			"poll",
 		);
 
 		expect(done).toBe("done");
 		expect(chunks).toEqual([0, 1, 2]);
 		expect(starts.count).toBe(1);
-	});
+	}, 30_000);
 });

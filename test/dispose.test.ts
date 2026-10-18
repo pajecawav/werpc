@@ -147,11 +147,37 @@ describe("keep-alive", () => {
 			onData: () => undefined,
 		});
 
-		await sleep(50);
-		expect(keepAliveState().active).toBe(true);
+		// wait until the subscription is actually running (port handshake
+		// may retry the hello before the start request goes out)
+		await withTimeout(
+			new Promise<void>(resolve => {
+				const check = () => {
+					if (keepAliveState().active) {
+						resolve();
+					} else {
+						setTimeout(check, 20);
+					}
+				};
+				check();
+			}),
+			5000,
+			"keep-alive on",
+		);
 
 		unsub.unsubscribe();
-		await sleep(50);
-		expect(keepAliveState().active).toBe(false);
+		await withTimeout(
+			new Promise<void>(resolve => {
+				const check = () => {
+					if (!keepAliveState().active) {
+						resolve();
+					} else {
+						setTimeout(check, 20);
+					}
+				};
+				check();
+			}),
+			5000,
+			"keep-alive off",
+		);
 	});
 });

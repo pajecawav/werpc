@@ -59,6 +59,7 @@ interface Envelope {
 export class FakeExtension {
 	public log: LogEntry[] = [];
 	public delayMs = 0;
+	public droppedCount = 0;
 
 	private contexts = new Map<string, FakeContext>();
 	private connections: Connection[] = [];
@@ -117,7 +118,9 @@ export class FakeExtension {
 			for (const listener of otherCtx.onConnectListeners) {
 				const lport = this.makePort(conn, otherId, info.name ?? "", ctx.sender);
 				conn.listenerPorts.set(otherId, lport);
-				queueMicrotask(() => listener(lport));
+				// like Chrome: onConnect is delivered asynchronously and may
+				// land AFTER messages already posted on the fresh port
+				setTimeout(() => listener(lport), 0);
 			}
 		}
 
@@ -176,6 +179,12 @@ export class FakeExtension {
 		const fire = () => {
 			const ports = fanout ? [...conn.listenerPorts.values()] : [conn.connectorPort];
 			for (const p of ports) {
+				if (p._listeners.size === 0) {
+					// like Chrome: no onMessage listener attached at dispatch time
+					this.droppedCount++;
+					continue;
+				}
+
 				for (const cb of p._listeners) {
 					queueMicrotask(() => cb(message, p));
 				}
