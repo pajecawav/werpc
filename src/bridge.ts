@@ -62,19 +62,14 @@ export interface BridgeDrop {
 	};
 }
 
-const REQUEST_TYPES: readonly string[] = [
-	"query",
-	"mutation",
-	"subscription.start",
-	"subscription.stop",
-];
-const EVENT_TYPES: readonly string[] = [
+const REQUEST_TYPES = new Set(["query", "mutation", "subscription.start", "subscription.stop"]);
+const EVENT_TYPES = new Set([
 	"output",
 	"error",
 	"subscription.ack",
 	"subscription.output",
 	"subscription.stop",
-];
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
@@ -104,7 +99,7 @@ export const isBridgeRequest = (message: unknown): message is BridgeRequest => {
 		return false;
 	}
 
-	const request = message["werpc_request"] as Record<string, unknown>;
+	const request = message["werpc_request"];
 
 	return (
 		hasVersion(request) &&
@@ -112,7 +107,7 @@ export const isBridgeRequest = (message: unknown): message is BridgeRequest => {
 		typeof request["id"] === "number" &&
 		typeof request["path"] === "string" &&
 		typeof request["type"] === "string" &&
-		REQUEST_TYPES.includes(request["type"])
+		REQUEST_TYPES.has(request["type"])
 	);
 };
 
@@ -121,14 +116,14 @@ export const isBridgeEvent = (message: unknown): message is BridgeEvent => {
 		return false;
 	}
 
-	const event = message["werpc_event"] as Record<string, unknown>;
+	const event = message["werpc_event"];
 
 	return (
 		hasVersion(event) &&
 		isBridgeContext(event["context"]) &&
 		typeof event["id"] === "number" &&
 		typeof event["type"] === "string" &&
-		EVENT_TYPES.includes(event["type"])
+		EVENT_TYPES.has(event["type"])
 	);
 };
 
