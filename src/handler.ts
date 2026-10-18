@@ -12,6 +12,7 @@ import {
 } from "./bridge";
 import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
+import { acquireKeepAlive, releaseKeepAlive } from "./keep-alive";
 import { WERPCPort } from "./port";
 import { PortLike, router, RoutingHandler } from "./router";
 import { WERPCContext } from "./werpc";
@@ -49,13 +50,14 @@ export class WERPCHandler<
 > implements RoutingHandler {
 	private subscriptions = new Map<
 		string,
-		{ abort: () => void; context: BridgeContext; id: number }
+		{ close: () => void; context: BridgeContext; id: number }
 	>();
 	private completedSubscriptions = new Map<string, { resendStop: () => void }>();
 	private port: WERPCPort | null = null;
+	private readonly isServiceWorker = detectContext() === "service_worker";
 
 	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
-		if (detectContext() === "service_worker") {
+		if (this.isServiceWorker) {
 			router.registerLocal(options.namespace, this);
 			chrome.runtime.onConnect.addListener(this.addPort);
 		} else {
@@ -67,6 +69,21 @@ export class WERPCHandler<
 			this.announce();
 		}
 	}
+
+	/** Stop serving the namespace and release all resources. */
+	public dispose = () => {
+		if (this.isServiceWorker) {
+			router.unregisterLocal(this.options.namespace, this);
+			chrome.runtime.onConnect.removeListener(this.addPort);
+		} else {
+			this.port?.close();
+			this.port = null;
+		}
+
+		for (const requestId of this.subscriptions.keys()) {
+			this.closeSubscription(requestId);
+		}
+	};
 
 	private announce = () => {
 		this.port?.postMessage({
@@ -98,10 +115,20 @@ export class WERPCHandler<
 
 		for (const requestId of this.subscriptions.keys()) {
 			if (requestId.startsWith(prefix)) {
-				this.subscriptions.get(requestId)?.abort();
-				this.subscriptions.delete(requestId);
+				this.closeSubscription(requestId);
 			}
 		}
+	};
+
+	private closeSubscription = (requestId: string) => {
+		const subscription = this.subscriptions.get(requestId);
+
+		if (!subscription) {
+			return;
+		}
+
+		this.subscriptions.delete(requestId);
+		subscription.close();
 	};
 
 	public acceptRequest = async (
@@ -135,10 +162,6 @@ export class WERPCHandler<
 		}
 	};
 
-	// TODO: force-disconnect ports for keep-alive
-	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
-	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
-	// or https://developer.chrome.com/docs/extensions/develop/concepts/service_workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
 	private addPort = (port: chrome.runtime.Port) => {
 		if (port.name !== WERPC_NAMESPACE) {
 			return;
@@ -146,13 +169,8 @@ export class WERPCHandler<
 
 		const portLike = port as unknown as PortLike;
 
-		const intervalId = setInterval(() => {
-			void chrome.runtime.getPlatformInfo();
-		}, 20_000);
-
 		port.onDisconnect.addListener(() => {
 			router.forgetPort(portLike);
-			clearInterval(intervalId);
 		});
 
 		port.onMessage.addListener(message => {
@@ -239,8 +257,7 @@ export class WERPCHandler<
 		const requestId = `${request.context.clientId}:${request.context.namespace}:${id}`;
 
 		if (type === "subscription.stop") {
-			this.subscriptions.get(requestId)?.abort();
-			this.subscriptions.delete(requestId);
+			this.closeSubscription(requestId);
 			return;
 		}
 
@@ -296,7 +313,15 @@ export class WERPCHandler<
 				tabId,
 			};
 
-			this.subscriptions.set(requestId, { abort: () => ac.abort(), context, id });
+			acquireKeepAlive();
+			this.subscriptions.set(requestId, {
+				close: () => {
+					ac.abort();
+					releaseKeepAlive();
+				},
+				context,
+				id,
+			});
 
 			sendEvent({
 				context,
@@ -314,7 +339,7 @@ export class WERPCHandler<
 				});
 			}
 
-			this.subscriptions.delete(requestId);
+			this.closeSubscription(requestId);
 			this.rememberCompleted(requestId, context, id, sendEvent);
 
 			sendEvent({

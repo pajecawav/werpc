@@ -81,6 +81,10 @@ export class FakeExtension {
 						}
 						ctx.onConnectListeners.add(cb);
 					},
+					removeListener: (cb: (port: FakePort) => void) => {
+						const ctx = this.contexts.get(ctxId);
+						ctx?.onConnectListeners.delete(cb);
+					},
 				},
 				getPlatformInfo: () => Promise.resolve({ os: "cros" }),
 			},

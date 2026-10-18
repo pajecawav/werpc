@@ -9,6 +9,9 @@ import { createWERPCLink, LinkEvents } from "./link";
 
 export type WERPClient = {
 	[Namespace in keyof WERPCNamespaces]: TRPCClient<WERPCNamespaces[Namespace]>;
+} & {
+	/** Close the underlying port; further calls will throw. */
+	dispose(): void;
 };
 
 export interface CreateClientOptions {
@@ -52,6 +55,10 @@ class ClientManager {
 		return client;
 	}
 
+	public dispose = () => {
+		this.port.close();
+	};
+
 	private postMessage = (message: BridgeRequest) => {
 		this.port.postMessage(message);
 	};
@@ -87,16 +94,17 @@ export const createClient = (options: CreateClientOptions = {}): WERPClient => {
 
 	const clientManager = new ClientManager(options);
 
-	return new Proxy<WERPClient>(
-		{},
-		{
-			get(_, namespace) {
-				if (typeof namespace !== "string") {
-					throw new Error("Invalid namespace");
-				}
+	return new Proxy<WERPClient>({} as WERPClient, {
+		get(_, prop) {
+			if (typeof prop !== "string") {
+				return undefined;
+			}
 
-				return clientManager.getClient(namespace as keyof WERPCNamespaces);
-			},
+			if (prop === "dispose") {
+				return () => clientManager.dispose();
+			}
+
+			return clientManager.getClient(prop as keyof WERPCNamespaces);
 		},
-	);
+	});
 };

@@ -66,33 +66,3 @@ export class EventEmitter<TEvents extends EventsMap> {
 		}
 	}
 }
-
-export const on = <TEvent extends keyof TEvents, TEvents extends EventsMap>(
-	emitter: EventEmitter<TEvents>,
-	event: TEvent,
-): AsyncIterable<TEvents[TEvent]> => {
-	return {
-		[Symbol.asyncIterator]() {
-			return {
-				next: () => {
-					return new Promise(resolve => {
-						emitter.once(event, (...args) => {
-							resolve({ value: args, done: false });
-						});
-					});
-				},
-			};
-		},
-	};
-};
-
-export const once = <TEvent extends keyof TEvents, TEvents extends EventsMap>(
-	emitter: EventEmitter<TEvents>,
-	event: TEvent,
-): Promise<TEvents[TEvent]> => {
-	return new Promise(resolve => {
-		emitter.once(event, (...args) => {
-			resolve(args);
-		});
-	});
-};

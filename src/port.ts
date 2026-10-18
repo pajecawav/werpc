@@ -4,6 +4,7 @@ type OnMessageListener = (message: unknown, sender?: chrome.runtime.MessageSende
 
 export class WERPCPort {
 	private port: chrome.runtime.Port | null = null;
+	private closed = false;
 	private listeners = new Set<OnMessageListener>();
 	private reconnectedListeners = new Set<() => void>();
 
@@ -20,6 +21,19 @@ export class WERPCPort {
 		this.reconnectedListeners.add(cb);
 	};
 
+	public close = () => {
+		try {
+			this.port?.disconnect();
+		} catch {
+			/* empty */
+		}
+
+		this.port = null;
+		this.closed = true;
+		this.listeners.clear();
+		this.reconnectedListeners.clear();
+	};
+
 	public postMessage = <T = unknown>(message: T) => {
 		try {
 			this.ensure().postMessage(message);
@@ -32,6 +46,10 @@ export class WERPCPort {
 	};
 
 	private ensure = () => {
+		if (this.closed) {
+			throw new Error("WERPCPort is closed");
+		}
+
 		if (this.port) {
 			return this.port;
 		}
