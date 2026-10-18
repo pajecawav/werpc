@@ -30,3 +30,11 @@ jobs:
 
             - name: Test
               run: pnpm test
+
+            - name: Install Playwright Chromium
+              run: pnpm --filter=playground exec playwright install chromium --with-deps
+
+            - name: E2E
+              run: pnpm play:e2e
+              env:
+                  PW_HEADLESS: "1"

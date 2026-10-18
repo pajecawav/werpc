@@ -7,6 +7,7 @@
 		"dev": "cross-env FORCE_COLOR=1 run-p -l watch start:chromium",
 		"build": "rsbuild build",
 		"watch": "rsbuild build --watch",
+		"e2e": "playwright test",
 		"start:chromium": "web-ext run -s dist -t chromium --start-url=example.com",
 		"start:firefox": "web-ext run -s dist -t firefox-desktop --start-url=example.com"
 	},
@@ -14,6 +15,7 @@
 		"werpc": "workspace:*"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.64.1",
 		"cross-env": "^10.1.0",
 		"npm-run-all2": "^9.0.2"
 	}

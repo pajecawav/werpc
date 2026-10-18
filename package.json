@@ -31,6 +31,7 @@
 		"dev": "tsdown --watch",
 		"play": "pnpm --filter=playground dev",
 		"play:build": "pnpm --filter=playground build",
+		"play:e2e": "pnpm play:build && pnpm --filter=playground e2e",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage",

@@ -3,3 +3,5 @@ dist
 .swc
 *.tsbuildinfo
 coverage
+playground/test-results
+playground/playwright-report
