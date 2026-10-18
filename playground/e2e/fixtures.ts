@@ -27,7 +27,10 @@ export const test = base.extend<{
 		if (!background) {
 			background = await context.waitForEvent("serviceworker");
 		}
-		const extensionId = background.url().split("/")[2]!;
+		const extensionId = background.url().split("/")[2];
+		if (!extensionId) {
+			throw new Error("Could not determine extension id from service worker url");
+		}
 		await use(extensionId);
 	},
 });
