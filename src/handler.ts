@@ -34,7 +34,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 
 	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
 		if (detectContext() !== "service_worker") {
-			const werpcPort = WERPCPort.getInstance();
+			const werpcPort = new WERPCPort();
 			this.ports.add(werpcPort);
 
 			werpcPort.onMessage((message, sender) => {

@@ -23,7 +23,7 @@ class ClientManager {
 	private clientId = createIdempotencyKey();
 	private events = new EventEmitter<LinkEvents>();
 	private idempotencyManager = new IdempotencyManager();
-	private port = WERPCPort.getInstance();
+	private port = new WERPCPort();
 	private clients = new Map<string, TRPCClient<AnyRouter>>();
 
 	public constructor(private options: CreateClientOptions) {

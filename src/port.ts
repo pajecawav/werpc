@@ -6,18 +6,6 @@ export class WERPCPort {
 	private port: chrome.runtime.Port | null = null;
 	private listeners = new Set<OnMessageListener>();
 
-	private constructor() {}
-
-	private static instance: WERPCPort | null = null;
-
-	public static getInstance = () => {
-		if (!this.instance) {
-			this.instance = new WERPCPort();
-		}
-
-		return this.instance;
-	};
-
 	public get sender() {
 		return this.port?.sender;
 	}
