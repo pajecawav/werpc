@@ -8,7 +8,8 @@
 import type { FakeExtension, FakeSender, ContextKind } from "./hub";
 
 export const swMode = <T>(fn: () => T): T => {
-	const ServiceWorkerGlobalScope = class {};
+	// eslint-disable-next-line @typescript-eslint/no-empty-function
+	const ServiceWorkerGlobalScope = function () {};
 	const g = globalThis as unknown as Record<string, unknown>;
 	const prevSelf = g["self"];
 	g["ServiceWorkerGlobalScope"] = ServiceWorkerGlobalScope;

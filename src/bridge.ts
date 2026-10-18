@@ -27,8 +27,14 @@ export interface BridgeEventPayload<Output = unknown> {
 	idempotencyKey: string;
 	context: BridgeContext;
 	id: number;
-	type: "output" | "subscription.ack" | "subscription.output" | "subscription.stop";
+	type: "output" | "error" | "subscription.ack" | "subscription.output" | "subscription.stop";
 	output: Output;
+}
+
+export interface BridgeErrorOutput {
+	message: string;
+	code: string;
+	path: string;
 }
 
 export const bridgeEventSchema = v.object({

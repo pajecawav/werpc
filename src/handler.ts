@@ -1,9 +1,10 @@
-import { AnyProcedure, AnyRouter } from "@trpc/server";
+import { AnyProcedure, AnyRouter, TRPCError } from "@trpc/server";
 import { isObservable, observableToAsyncIterable } from "@trpc/server/observable";
 import { isAsyncIterable } from "@trpc/server/unstable-core-do-not-import";
 import * as v from "valibot";
 import {
 	BridgeContext,
+	BridgeErrorOutput,
 	BridgeEvent,
 	BridgeEventPayload,
 	bridgeEventSchema,
@@ -109,13 +110,32 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 	}) => {
 		const ctx: WERPCContext = { clientName, tabId };
 		const caller = this.options.router.createCaller(ctx, { signal });
-		const handler = path
-			.split(".")
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
-			.reduce((c, segment) => c[segment], caller as any) as AnyProcedure;
+		const procedure = this.resolveProcedure(caller, path);
 
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return
-		return await handler(input as any);
+		return await procedure(input as any);
+	};
+
+	private resolveProcedure = (caller: unknown, path: string): AnyProcedure => {
+		const procedure = path.split(".").reduce<unknown>((node, segment) => {
+			const callable = typeof node === "function";
+			const indexable = typeof node === "object" && node !== null;
+
+			if (!callable && !indexable) {
+				return undefined;
+			}
+
+			return (node as Record<string, unknown>)[segment];
+		}, caller);
+
+		if (typeof procedure !== "function") {
+			throw new TRPCError({
+				code: "NOT_FOUND",
+				message: `Procedure not found: ${path}`,
+			});
+		}
+
+		return procedure as AnyProcedure;
 	};
 
 	private onMessage = async (
@@ -141,7 +161,7 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			return;
 		}
 
-		const { idempotencyKey, context, id, path, type, input } = req.output.werpc_request;
+		const { idempotencyKey, context, id, path } = req.output.werpc_request;
 
 		if (this.idempotencyManager.isDuplicate(idempotencyKey)) {
 			return;
@@ -158,11 +178,43 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			return;
 		}
 
-		const sendEvent = (payload: BridgeEventPayload) => {
-			this.broadcast({ werpc_event: payload }, targetTabId);
+		const sendEvent = (payload: Omit<BridgeEventPayload, "idempotencyKey">) => {
+			this.broadcast(
+				{ werpc_event: { ...payload, idempotencyKey: createIdempotencyKey() } },
+				targetTabId,
+			);
 		};
 
-		const requestId = `${clientId}:${requestNamespace}:${id}`;
+		try {
+			await this.handleRequest({ request: req.output.werpc_request, tabId, sendEvent });
+		} catch (error) {
+			sendEvent({
+				context: {
+					clientId,
+					clientName,
+					namespace: this.options.namespace,
+					tabId,
+					scopeToTab,
+				},
+				id,
+				type: "error",
+				output: describeError(error, path),
+			});
+		}
+	};
+
+	private handleRequest = async ({
+		request,
+		tabId,
+		sendEvent,
+	}: {
+		request: BridgeRequest["werpc_request"];
+		tabId: number | undefined;
+		sendEvent: (payload: Omit<BridgeEventPayload, "idempotencyKey">) => void;
+	}) => {
+		const { id, path, input, type } = request;
+		const { clientName } = request.context;
+		const requestId = `${request.context.clientId}:${request.context.namespace}:${id}`;
 
 		if (type === "subscription.stop") {
 			this.subscriptions.get(requestId)?.();
@@ -197,15 +249,14 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			this.subscriptions.set(requestId, () => ac.abort());
 
 			const context: BridgeContext = {
-				clientId,
+				clientId: request.context.clientId,
 				clientName,
 				namespace: this.options.namespace,
 				tabId,
-				scopeToTab,
+				scopeToTab: request.context.scopeToTab,
 			};
 
 			sendEvent({
-				idempotencyKey: createIdempotencyKey(),
 				context,
 				id,
 				type: "subscription.ack",
@@ -214,7 +265,6 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 
 			for await (const chunk of iterable) {
 				sendEvent({
-					idempotencyKey: createIdempotencyKey(),
 					context,
 					id,
 					type: "subscription.output",
@@ -222,8 +272,9 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 				});
 			}
 
+			this.subscriptions.delete(requestId);
+
 			sendEvent({
-				idempotencyKey: createIdempotencyKey(),
 				context,
 				id,
 				type: "subscription.stop",
@@ -231,8 +282,13 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			});
 		} else {
 			sendEvent({
-				idempotencyKey: createIdempotencyKey(),
-				context,
+				context: {
+					clientId: request.context.clientId,
+					clientName,
+					namespace: this.options.namespace,
+					tabId,
+					scopeToTab: request.context.scopeToTab,
+				},
 				id,
 				type: "output",
 				output,
@@ -240,6 +296,16 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 		}
 	};
 }
+
+const describeError = (error: unknown, path: string): BridgeErrorOutput => {
+	if (error instanceof TRPCError) {
+		return { message: error.message, code: error.code, path };
+	}
+
+	const message = error instanceof Error ? error.message : String(error);
+
+	return { message, code: "INTERNAL_SERVER_ERROR", path };
+};
 
 export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace: handlerNamespace,

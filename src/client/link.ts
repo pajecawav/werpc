@@ -1,7 +1,7 @@
-import { TRPCLink } from "@trpc/client";
+import { TRPCClientError, TRPCLink } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import { BridgeContext, BridgeEventPayload, BridgeRequest } from "../bridge";
+import { BridgeContext, BridgeErrorOutput, BridgeEventPayload, BridgeRequest } from "../bridge";
 import { EventEmitter } from "../events";
 import { createIdempotencyKey } from "../idempotency/key";
 import { expectNever } from "../utils";
@@ -74,6 +74,17 @@ export const createWERPCLink = ({
 							clearTimeout(subscriptionTimeoutId);
 							observer.next({ result: { type: "started" } });
 							break;
+
+						case "error": {
+							const error = event.output as BridgeErrorOutput;
+							unsubscribe();
+							observer.error(
+								new TRPCClientError(error.message, {
+									meta: { code: error.code, message: error.message },
+								}),
+							);
+							break;
+						}
 
 						case "subscription.output":
 							observer.next({ result: { data: event.output } });
