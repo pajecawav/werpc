@@ -186,6 +186,10 @@ export class FakeExtension {
 	};
 
 	private disconnectConn = (conn: Connection) => {
+		if (conn.dead) {
+			return;
+		}
+
 		conn.dead = true;
 		for (const p of [conn.connectorPort, ...conn.listenerPorts.values()]) {
 			for (const cb of p._disconnectListeners) {
@@ -201,6 +205,15 @@ export class FakeExtension {
 			throw new Error(`No connection from ${ctxId}`);
 		}
 		conn.dead = true;
+	};
+
+	/** Disconnect a context's port for real: postMessage throws, onDisconnect fires. */
+	public disconnect = (ctxId: string) => {
+		const conn = this.connections.find(c => c.connectorCtxId === ctxId);
+		if (!conn) {
+			throw new Error(`No connection from ${ctxId}`);
+		}
+		this.disconnectConn(conn);
 	};
 
 	/** Messages routed through the hub (lower bound of real traffic). */

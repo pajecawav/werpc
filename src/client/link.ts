@@ -53,16 +53,23 @@ export const createWERPCLink = ({
 					input,
 				};
 
-				signal?.addEventListener("abort", () => {
+				const cleanup = () => {
+					clearTimers();
 					unsubscribe();
 
-					postRequest({
-						werpc_request: {
-							...common,
-							idempotencyKey: createIdempotencyKey(),
-							type: "subscription.stop",
-						},
-					} satisfies BridgeRequest);
+					if (type === "subscription") {
+						postRequest({
+							werpc_request: {
+								...common,
+								idempotencyKey: createIdempotencyKey(),
+								type: "subscription.stop",
+							},
+						} satisfies BridgeRequest);
+					}
+				};
+
+				signal?.addEventListener("abort", () => {
+					cleanup();
 				});
 
 				let subscriptionTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -75,7 +82,7 @@ export const createWERPCLink = ({
 
 				if (timeoutMs > 0 && (type === "query" || type === "mutation")) {
 					opTimeoutId = setTimeout(() => {
-						unsubscribe();
+						cleanup();
 						observer.error(
 							new TRPCClientError(`werpc: ${type} timed out after ${timeoutMs}ms`, {
 								meta: { code: "TIMEOUT", message: "timeout" },
@@ -169,14 +176,7 @@ export const createWERPCLink = ({
 				}
 
 				return () => {
-					clearTimers();
-					postRequest({
-						werpc_request: {
-							...common,
-							idempotencyKey: createIdempotencyKey(),
-							type: "subscription.stop",
-						},
-					});
+					cleanup();
 				};
 			});
 		};

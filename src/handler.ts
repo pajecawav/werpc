@@ -21,6 +21,18 @@ export interface CreateHandlerOptions<TNamespace extends string, TRouter extends
 	router: TRouter;
 }
 
+const isDropMessage = (message: unknown): message is { werpc_drop: { clientId: string } } => {
+	if (typeof message !== "object" || message === null || !("werpc_drop" in message)) {
+		return false;
+	}
+
+	const drop = message.werpc_drop;
+
+	const clientId = (drop as Record<string, unknown>)["clientId"];
+
+	return typeof drop === "object" && drop !== null && typeof clientId === "string";
+};
+
 const safePost = (port: PortLike, message: unknown) => {
 	try {
 		port.postMessage(message);
@@ -73,6 +85,11 @@ export class WERPCHandler<
 	};
 
 	private onPortMessage = async (message: unknown) => {
+		if (isDropMessage(message)) {
+			this.dropClient(message.werpc_drop.clientId);
+			return;
+		}
+
 		const req = v.safeParse(bridgeRequestSchema, message);
 		if (!req.success) {
 			return;
@@ -85,6 +102,17 @@ export class WERPCHandler<
 		}
 
 		await this.acceptRequest(request, null);
+	};
+
+	public dropClient = (clientId: string) => {
+		const prefix = `${clientId}:`;
+
+		for (const requestId of this.subscriptions.keys()) {
+			if (requestId.startsWith(prefix)) {
+				this.subscriptions.get(requestId)?.abort();
+				this.subscriptions.delete(requestId);
+			}
+		}
 	};
 
 	public acceptRequest = async (

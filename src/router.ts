@@ -9,6 +9,8 @@ export interface PortLike {
 /** A handler running in the same context as the router (the service worker). */
 export interface RoutingHandler {
 	acceptRequest(request: BridgeRequest["werpc_request"], fromPort: PortLike): Promise<void>;
+	/** Abort all subscriptions belonging to a client whose port died. */
+	dropClient(clientId: string): void;
 }
 
 type Owner = { kind: "local"; handler: RoutingHandler } | { kind: "port"; port: PortLike };
@@ -66,13 +68,16 @@ const safePost = (port: PortLike, message: unknown) => {
 class Router {
 	private owners = new Map<string, Owner[]>();
 	private clientPorts = new Map<string, PortLike>();
+	private localHandlers = new Set<RoutingHandler>();
 
 	public registerLocal = (namespace: string, handler: RoutingHandler) => {
 		this.addOwner(namespace, { kind: "local", handler });
+		this.localHandlers.add(handler);
 	};
 
 	public unregisterLocal = (namespace: string, handler: RoutingHandler) => {
 		this.removeOwners(namespace, owner => owner.kind === "local" && owner.handler === handler);
+		this.localHandlers.delete(handler);
 	};
 
 	public registerPortNamespace = (namespace: string, port: PortLike) => {
@@ -81,6 +86,10 @@ class Router {
 	};
 
 	public forgetPort = (port: PortLike) => {
+		const droppedClients = [...this.clientPorts.entries()]
+			.filter(([, clientPort]) => clientPort === port)
+			.map(([clientId]) => clientId);
+
 		for (const namespace of this.owners.keys()) {
 			this.removeOwners(namespace, owner => owner.kind === "port" && owner.port === port);
 
@@ -89,9 +98,17 @@ class Router {
 			}
 		}
 
-		for (const [clientId, clientPort] of this.clientPorts) {
-			if (clientPort === port) {
-				this.clientPorts.delete(clientId);
+		for (const clientId of droppedClients) {
+			this.clientPorts.delete(clientId);
+
+			// abort subscriptions owned by local handlers
+			for (const handler of this.localHandlers) {
+				handler.dropClient(clientId);
+			}
+
+			// tell remote handlers to drop this client's subscriptions too
+			for (const owner of this.allPortOwners()) {
+				safePost(owner.port, { werpc_drop: { clientId } });
 			}
 		}
 	};
@@ -205,6 +222,20 @@ class Router {
 		const owners = this.owners.get(namespace) ?? [];
 		owners.push(owner);
 		this.owners.set(namespace, owners);
+	};
+
+	private allPortOwners = (): { kind: "port"; port: PortLike }[] => {
+		const ports = new Map<PortLike, { kind: "port"; port: PortLike }>();
+
+		for (const owners of this.owners.values()) {
+			for (const owner of owners) {
+				if (owner.kind === "port") {
+					ports.set(owner.port, owner);
+				}
+			}
+		}
+
+		return [...ports.values()];
 	};
 
 	private removeOwners = (namespace: string, predicate: (owner: Owner) => boolean) => {
