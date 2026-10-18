@@ -21,8 +21,14 @@ export class WERPCPort {
 	};
 
 	public postMessage = <T = unknown>(message: T) => {
-		const port = this.ensure();
-		port.postMessage(message);
+		try {
+			this.ensure().postMessage(message);
+		} catch {
+			// the underlying port object went stale (e.g. the service worker
+			// died between calls): reconnect once and retry
+			this.reconnect();
+			this.ensure().postMessage(message);
+		}
 	};
 
 	private ensure = () => {
@@ -45,7 +51,13 @@ export class WERPCPort {
 		}
 
 		this.port = null;
-		this.ensure();
+
+		try {
+			this.ensure();
+		} catch {
+			// extension context invalidated: nothing to reconnect to
+			return;
+		}
 
 		for (const listener of this.reconnectedListeners) {
 			listener();
