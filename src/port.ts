@@ -5,6 +5,7 @@ type OnMessageListener = (message: unknown, sender?: chrome.runtime.MessageSende
 export class WERPCPort {
 	private port: chrome.runtime.Port | null = null;
 	private listeners = new Set<OnMessageListener>();
+	private reconnectedListeners = new Set<() => void>();
 
 	public get sender() {
 		return this.port?.sender;
@@ -13,6 +14,10 @@ export class WERPCPort {
 	public onMessage = (cb: OnMessageListener) => {
 		this.ensure();
 		this.listeners.add(cb);
+	};
+
+	public onReconnect = (cb: () => void) => {
+		this.reconnectedListeners.add(cb);
 	};
 
 	public postMessage = <T = unknown>(message: T) => {
@@ -41,6 +46,10 @@ export class WERPCPort {
 
 		this.port = null;
 		this.ensure();
+
+		for (const listener of this.reconnectedListeners) {
+			listener();
+		}
 	};
 
 	private notify = (message: unknown, sender?: chrome.runtime.MessageSender) => {

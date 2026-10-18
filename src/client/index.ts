@@ -5,7 +5,6 @@ import { bridgeEventSchema, BridgeRequest } from "../bridge";
 import { detectContext } from "../detect";
 import { EventEmitter } from "../events";
 import { createIdempotencyKey } from "../idempotency/key";
-import { IdempotencyManager } from "../idempotency/manager";
 import { WERPCPort } from "../port";
 import { WERPCNamespaces } from "../types";
 import { createWERPCLink, LinkEvents } from "./link";
@@ -22,7 +21,6 @@ export interface CreateClientOptions {
 class ClientManager {
 	private clientId = createIdempotencyKey();
 	private events = new EventEmitter<LinkEvents>();
-	private idempotencyManager = new IdempotencyManager();
 	private port = new WERPCPort();
 	private clients = new Map<string, TRPCClient<AnyRouter>>();
 
@@ -41,6 +39,7 @@ class ClientManager {
 		const link = createWERPCLink({
 			clientId: this.clientId,
 			clientName: this.options.clientName,
+			tabId: this.options.scopeToTab ? getDevtoolsTabId() : undefined,
 			namespace,
 			scopeToTab: this.options.scopeToTab,
 			events: this.events,
@@ -65,14 +64,22 @@ class ClientManager {
 
 		const event = r.output.werpc_event;
 
-		if (
-			event.context.clientId === this.clientId &&
-			!this.idempotencyManager.isDuplicate(event.idempotencyKey)
-		) {
+		if (event.context.clientId === this.clientId) {
 			this.events.emit(`${event.context.namespace}:${event.id}`, event);
 		}
 	};
 }
+
+/** Devtools panels are not tab-scoped by sender, but they inspect a concrete tab. */
+const getDevtoolsTabId = (): number | undefined => {
+	const devtools = (
+		globalThis as { chrome?: { devtools?: { inspectedWindow?: { tabId?: number } } } }
+	).chrome?.devtools;
+
+	return typeof devtools?.inspectedWindow?.tabId === "number"
+		? devtools.inspectedWindow.tabId
+		: undefined;
+};
 
 export const createClient = (options: CreateClientOptions = {}): WERPClient => {
 	if (detectContext() === "service_worker") {

@@ -5,93 +5,134 @@ import * as v from "valibot";
 import {
 	BridgeContext,
 	BridgeErrorOutput,
-	BridgeEvent,
 	BridgeEventPayload,
-	bridgeEventSchema,
-	BridgeRequest,
 	bridgeRequestSchema,
+	BridgeRequest,
 } from "./bridge";
 import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
 import { createIdempotencyKey } from "./idempotency/key";
-import { IdempotencyManager } from "./idempotency/manager";
 import { WERPCPort } from "./port";
+import { PortLike, router, RoutingHandler } from "./router";
 import { WERPCContext } from "./werpc";
-
-interface PortLike {
-	postMessage(message: unknown): void;
-	sender?: chrome.runtime.MessageSender;
-}
 
 export interface CreateHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
 	namespace: TNamespace;
 	router: TRouter;
 }
 
-export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> {
-	private ports = new Set<PortLike>();
-	private idempotencyManager = new IdempotencyManager();
-	private subscriptions = new Map<string, VoidFunction>();
+const safePost = (port: PortLike, message: unknown) => {
+	try {
+		port.postMessage(message);
+		return true;
+	} catch {
+		return false;
+	}
+};
 
-	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
-		if (detectContext() !== "service_worker") {
-			const werpcPort = new WERPCPort();
-			this.ports.add(werpcPort);
-
-			werpcPort.onMessage((message, sender) => {
-				void this.onMessage(message, sender);
-
-				return "ack";
-			});
-		}
-
-		chrome.runtime.onConnect.addListener(this.addPort);
+const describeError = (error: unknown, path: string): BridgeErrorOutput => {
+	if (error instanceof TRPCError) {
+		return { message: error.message, code: error.code, path };
 	}
 
-	/*
-	 * Broadcast message to connected ports
-	 */
-	private broadcast = (request: BridgeRequest | BridgeEvent, targetTabId: number | undefined) => {
-		// if (detectContext() === "service_worker") {
-		for (const port of this.ports) {
-			const noTargetTab = targetTabId === undefined;
-			const portTabId = port.sender?.tab?.id;
-			const isTargetTab = portTabId === targetTabId;
+	const message = error instanceof Error ? error.message : String(error);
 
-			if (noTargetTab || !portTabId || isTargetTab) {
-				port.postMessage(request);
-			}
+	return { message, code: "INTERNAL_SERVER_ERROR", path };
+};
+
+export class WERPCHandler<
+	TNamespace extends string,
+	TRouter extends AnyRouter,
+> implements RoutingHandler {
+	private subscriptions = new Map<string, VoidFunction>();
+	private port: WERPCPort | null = null;
+
+	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
+		if (detectContext() === "service_worker") {
+			router.registerLocal(options.namespace, this);
+			chrome.runtime.onConnect.addListener(this.addPort);
+		} else {
+			this.port = new WERPCPort();
+			this.port.onMessage(message => {
+				void this.onPortMessage(message);
+			});
+			this.port.onReconnect(this.announce);
+			this.announce();
 		}
-		// } else {
-		// 	WERPCPort.getInstance().postMessage(request);
-		// }
+	}
+
+	private announce = () => {
+		this.port?.postMessage({ werpc_announce: { namespace: this.options.namespace } });
+	};
+
+	private onPortMessage = async (message: unknown) => {
+		const req = v.safeParse(bridgeRequestSchema, message);
+		if (!req.success) {
+			return;
+		}
+
+		const request = req.output.werpc_request;
+
+		if (request.context.namespace !== this.options.namespace) {
+			return;
+		}
+
+		await this.acceptRequest(request, null);
+	};
+
+	public acceptRequest = async (
+		request: BridgeRequest["werpc_request"],
+		fromPort: PortLike | null,
+	) => {
+		const target: PortLike = fromPort ?? {
+			postMessage: message => this.port?.postMessage(message),
+		};
+		const tabId = request.context.tabId ?? fromPort?.sender?.tab?.id;
+
+		const sendEvent = (payload: Omit<BridgeEventPayload, "idempotencyKey">) => {
+			safePost(target, {
+				werpc_event: { ...payload, idempotencyKey: createIdempotencyKey() },
+			});
+		};
+
+		try {
+			await this.handleRequest({ request, tabId, sendEvent });
+		} catch (error) {
+			sendEvent({
+				context: {
+					...request.context,
+					namespace: this.options.namespace,
+					tabId,
+				},
+				id: request.id,
+				type: "error",
+				output: describeError(error, request.path),
+			});
+		}
 	};
 
 	// TODO: force-disconnect ports for keep-alive
 	// https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension
 	// https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/Port#lifecycle
-	// or https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
+	// or https://developer.chrome.com/docs/extensions/develop/concepts/service_workers/lifecycle#idle-shutdown (use chrome.runtime.getPlatformInfo every <30 seconds?)
 	private addPort = (port: chrome.runtime.Port) => {
 		if (port.name !== WERPC_NAMESPACE) {
 			return;
 		}
 
-		this.ports.add(port);
+		const portLike = port as unknown as PortLike;
 
 		const intervalId = setInterval(() => {
 			void chrome.runtime.getPlatformInfo();
 		}, 20_000);
 
 		port.onDisconnect.addListener(() => {
-			// TODO: this leaks subscriptions, probably need to implement keep-alive for subscriptions?
-			this.ports.delete(port);
+			router.forgetPort(portLike);
 			clearInterval(intervalId);
 		});
 
 		port.onMessage.addListener(message => {
-			void this.onMessage(message, port.sender);
-
-			return "ack";
+			router.handleMessage(message, portLike);
 		});
 	};
 
@@ -138,71 +179,6 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 		return procedure as AnyProcedure;
 	};
 
-	private onMessage = async (
-		message: unknown,
-		sender: chrome.runtime.MessageSender | undefined,
-	) => {
-		const ev = v.safeParse(bridgeEventSchema, message);
-		if (ev.success) {
-			if (!this.idempotencyManager.isDuplicate(ev.output.werpc_event.idempotencyKey)) {
-				ev.output.werpc_event.context.tabId ??= sender?.tab?.id;
-				this.broadcast(
-					ev.output,
-					ev.output.werpc_event.context.scopeToTab
-						? ev.output.werpc_event.context.tabId
-						: undefined,
-				);
-			}
-			return;
-		}
-
-		const req = v.safeParse(bridgeRequestSchema, message);
-		if (!req.success) {
-			return;
-		}
-
-		const { idempotencyKey, context, id, path } = req.output.werpc_request;
-
-		if (this.idempotencyManager.isDuplicate(idempotencyKey)) {
-			return;
-		}
-
-		const { clientId, clientName, namespace: requestNamespace, scopeToTab } = context;
-		const tabId = context.tabId ?? sender?.tab?.id;
-		const targetTabId = scopeToTab ? tabId : undefined;
-
-		if (requestNamespace !== this.options.namespace) {
-			req.output.werpc_request.context.tabId = tabId;
-			this.broadcast(req.output, targetTabId);
-
-			return;
-		}
-
-		const sendEvent = (payload: Omit<BridgeEventPayload, "idempotencyKey">) => {
-			this.broadcast(
-				{ werpc_event: { ...payload, idempotencyKey: createIdempotencyKey() } },
-				targetTabId,
-			);
-		};
-
-		try {
-			await this.handleRequest({ request: req.output.werpc_request, tabId, sendEvent });
-		} catch (error) {
-			sendEvent({
-				context: {
-					clientId,
-					clientName,
-					namespace: this.options.namespace,
-					tabId,
-					scopeToTab,
-				},
-				id,
-				type: "error",
-				output: describeError(error, path),
-			});
-		}
-	};
-
 	private handleRequest = async ({
 		request,
 		tabId,
@@ -235,11 +211,18 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 
 		if (type === "subscription.start") {
 			if (this.subscriptions.has(requestId)) {
-				throw new Error(`Duplicate subscription with id ${requestId}`);
+				// already subscribed: a duplicate start means the ack was lost
+				throw new TRPCError({
+					code: "CONFLICT",
+					message: `Duplicate subscription with id ${requestId}`,
+				});
 			}
 
 			if (!isAsyncIterable(output) && !isObservable(output)) {
-				throw new Error(`Expected an observable or async iterable, got ${typeof output}`);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: `Expected an observable or async iterable, got ${typeof output}`,
+				});
 			}
 
 			const iterable = isObservable(output)
@@ -249,11 +232,9 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 			this.subscriptions.set(requestId, () => ac.abort());
 
 			const context: BridgeContext = {
-				clientId: request.context.clientId,
-				clientName,
+				...request.context,
 				namespace: this.options.namespace,
 				tabId,
-				scopeToTab: request.context.scopeToTab,
 			};
 
 			sendEvent({
@@ -283,11 +264,9 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 		} else {
 			sendEvent({
 				context: {
-					clientId: request.context.clientId,
-					clientName,
+					...request.context,
 					namespace: this.options.namespace,
 					tabId,
-					scopeToTab: request.context.scopeToTab,
 				},
 				id,
 				type: "output",
@@ -297,19 +276,9 @@ export class WERPCHandler<TNamespace extends string, TRouter extends AnyRouter> 
 	};
 }
 
-const describeError = (error: unknown, path: string): BridgeErrorOutput => {
-	if (error instanceof TRPCError) {
-		return { message: error.message, code: error.code, path };
-	}
-
-	const message = error instanceof Error ? error.message : String(error);
-
-	return { message, code: "INTERNAL_SERVER_ERROR", path };
-};
-
 export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace: handlerNamespace,
-	router,
+	router: handlerRouter,
 }: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
-	return new WERPCHandler({ namespace: handlerNamespace, router });
+	return new WERPCHandler({ namespace: handlerNamespace, router: handlerRouter });
 };

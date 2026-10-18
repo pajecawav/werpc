@@ -1,9 +1,14 @@
 import { TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createClient, createHandler, initWERPC } from "../src/index.ts";
+import { router } from "../src/router.ts";
 import { FakeExtension, sleep, withTimeout } from "./harness/hub.ts";
 import { inContext, swMode } from "./harness/werpc.ts";
+
+beforeEach(() => {
+	router.reset();
+});
 
 const ns = <R extends AnyRouter>(client: unknown, name: string): TRPCClient<R> => {
 	const value = (client as Record<string, TRPCClient<R>>)[name];
@@ -162,33 +167,34 @@ describe("werpc context guards", () => {
 		});
 	});
 
-	it("delivers responses to a tab-scoped content client", async () => {
+	it("fills ctx.tabId with the calling tab, not the handler's tab", async () => {
 		const ext = new FakeExtension();
 		const t = initWERPC();
-		const router = t.router({
+		const contentRouter = t.router({
 			ping: t.procedure.query(({ ctx }) => `content tab ${ctx.tabId}`),
+		});
+		const backgroundRouter = t.router({
+			echoCallerTab: t.procedure.query(({ ctx }) => `caller tab ${ctx.tabId ?? "none"}`),
 		});
 
 		inContext(ext, "bg", "sw", undefined, () => {
 			swMode(() => {
-				createHandler({
-					namespace: "background",
-					router: t.router({ ok: t.procedure.query(() => true) }),
-				});
+				createHandler({ namespace: "background", router: backgroundRouter });
 			});
 		});
 
-		inContext(ext, "content1", "content", { tab: { id: 1 } }, () => {
-			createHandler({ namespace: "content", router });
-		});
-
-		let client: unknown;
-		inContext(ext, "popup", "page", undefined, () => {
-			client = createClient({ clientName: "popup" });
+		let contentClient: unknown;
+		inContext(ext, "content1", "content", { tab: { id: 7 } }, () => {
+			createHandler({ namespace: "content", router: contentRouter });
+			contentClient = createClient({ clientName: "content1", scopeToTab: true });
 		});
 
 		await expect(
-			withTimeout(ns<typeof router>(client, "content").ping.query(), 2000, "scoped"),
-		).resolves.toBe("content tab 1");
+			withTimeout(
+				ns<typeof backgroundRouter>(contentClient, "background").echoCallerTab.query(),
+				2000,
+				"echo",
+			),
+		).resolves.toBe("caller tab 7");
 	});
 });

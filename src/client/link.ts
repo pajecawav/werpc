@@ -15,7 +15,7 @@ export type LinkEvents = {
 
 interface CreateWERPCLinkOptions extends Pick<
 	BridgeContext,
-	"clientId" | "clientName" | "namespace" | "scopeToTab"
+	"clientId" | "clientName" | "namespace" | "scopeToTab" | "tabId"
 > {
 	postRequest: (request: BridgeRequest) => void;
 	events: EventEmitter<LinkEvents>;
@@ -26,6 +26,7 @@ export type WERPCLink = TRPCLink<AnyRouter>;
 export const createWERPCLink = ({
 	clientId,
 	clientName,
+	tabId,
 	scopeToTab,
 	namespace,
 	postRequest,
@@ -41,7 +42,7 @@ export const createWERPCLink = ({
 						clientId,
 						clientName,
 						namespace,
-						tabId: undefined,
+						tabId,
 						scopeToTab,
 					} satisfies BridgeContext,
 					id,

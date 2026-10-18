@@ -1,9 +1,14 @@
 import { isTRPCClientError, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createClient, createHandler, initWERPC } from "../src/index.ts";
+import { router } from "../src/router.ts";
 import { FakeExtension, sleep, withTimeout } from "./harness/hub.ts";
 import { inContext, swMode } from "./harness/werpc.ts";
+
+beforeEach(() => {
+	router.reset();
+});
 
 const ns = <R extends AnyRouter>(client: unknown, name: string): TRPCClient<R> => {
 	const value = (client as Record<string, TRPCClient<R>>)[name];
