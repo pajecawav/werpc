@@ -1,10 +1,8 @@
 import { createTRPCClient, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
-import * as v from "valibot";
-import { bridgeEventSchema, BridgeRequest } from "../bridge";
+import { BridgeRequest, isBridgeEvent } from "../bridge";
 import { detectContext } from "../detect";
 import { EventEmitter } from "../events";
-import { createIdempotencyKey } from "../idempotency/key";
 import { WERPCPort } from "../port";
 import { WERPCNamespaces } from "../types";
 import { createWERPCLink, LinkEvents } from "./link";
@@ -21,7 +19,7 @@ export interface CreateClientOptions {
 }
 
 class ClientManager {
-	private clientId = createIdempotencyKey();
+	private clientId = crypto.randomUUID();
 	private events = new EventEmitter<LinkEvents>();
 	private port = new WERPCPort();
 	private clients = new Map<string, TRPCClient<AnyRouter>>();
@@ -59,13 +57,11 @@ class ClientManager {
 	};
 
 	private onMessage = (message: unknown) => {
-		const r = v.safeParse(bridgeEventSchema, message);
-
-		if (!r.success) {
+		if (!isBridgeEvent(message)) {
 			return;
 		}
 
-		const event = r.output.werpc_event;
+		const event = message.werpc_event;
 
 		if (event.context.clientId === this.clientId) {
 			this.events.emit(`${event.context.namespace}:${event.id}`, event);

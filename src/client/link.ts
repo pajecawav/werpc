@@ -1,9 +1,14 @@
 import { TRPCClientError, TRPCLink } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
-import { BridgeContext, BridgeErrorOutput, BridgeEventPayload, BridgeRequest } from "../bridge";
+import {
+	BridgeContext,
+	BridgeErrorOutput,
+	BridgeEventPayload,
+	BridgeRequest,
+	PROTOCOL_VERSION,
+} from "../bridge";
 import { EventEmitter } from "../events";
-import { createIdempotencyKey } from "../idempotency/key";
 import { expectNever } from "../utils";
 
 /** namespace:id */
@@ -61,7 +66,7 @@ export const createWERPCLink = ({
 						postRequest({
 							werpc_request: {
 								...common,
-								idempotencyKey: createIdempotencyKey(),
+								v: PROTOCOL_VERSION,
 								type: "subscription.stop",
 							},
 						} satisfies BridgeRequest);
@@ -141,7 +146,7 @@ export const createWERPCLink = ({
 							postRequest({
 								werpc_request: {
 									...common,
-									idempotencyKey: createIdempotencyKey(),
+									v: PROTOCOL_VERSION,
 									type: "subscription.start",
 								},
 							});
@@ -164,7 +169,7 @@ export const createWERPCLink = ({
 						postRequest({
 							werpc_request: {
 								...common,
-								idempotencyKey: createIdempotencyKey(),
+								v: PROTOCOL_VERSION,
 								type,
 							},
 						});

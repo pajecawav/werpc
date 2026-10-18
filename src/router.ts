@@ -1,5 +1,11 @@
-import { BridgeErrorOutput, BridgeEventPayload, BridgeRequest } from "./bridge";
-import { createIdempotencyKey } from "./idempotency/key";
+import {
+	BridgeErrorOutput,
+	BridgeRequest,
+	isBridgeAnnounce,
+	isBridgeEvent,
+	isBridgeRequest,
+	PROTOCOL_VERSION,
+} from "./bridge";
 
 export interface PortLike {
 	postMessage(message: unknown): void;
@@ -15,40 +21,12 @@ export interface RoutingHandler {
 
 type Owner = { kind: "local"; handler: RoutingHandler } | { kind: "port"; port: PortLike };
 
-interface AnnounceMessage {
-	werpc_announce: {
-		namespace: string;
-	};
-}
-
 /**
  * How long an unroutable request waits for a late `announce` before failing.
  * Covers the SW-restart race where a client's request can beat the target
  * handler's re-announce.
  */
 const ROUTING_GRACE_MS = 300;
-
-const isAnnounce = (message: unknown): message is AnnounceMessage => {
-	if (typeof message !== "object" || message === null || !("werpc_announce" in message)) {
-		return false;
-	}
-
-	const announce = message.werpc_announce;
-
-	return (
-		typeof announce === "object" &&
-		announce !== null &&
-		typeof (announce as { namespace?: unknown }).namespace === "string"
-	);
-};
-
-const isEventMessage = (message: unknown): message is { werpc_event: BridgeEventPayload } => {
-	return typeof message === "object" && message !== null && "werpc_event" in message;
-};
-
-const isRequestMessage = (message: unknown): message is BridgeRequest => {
-	return typeof message === "object" && message !== null && "werpc_request" in message;
-};
 
 const safePost = (port: PortLike, message: unknown) => {
 	try {
@@ -108,18 +86,18 @@ class Router {
 
 			// tell remote handlers to drop this client's subscriptions too
 			for (const owner of this.allPortOwners()) {
-				safePost(owner.port, { werpc_drop: { clientId } });
+				safePost(owner.port, { werpc_drop: { v: PROTOCOL_VERSION, clientId } });
 			}
 		}
 	};
 
 	public handleMessage = (message: unknown, fromPort: PortLike) => {
-		if (isAnnounce(message)) {
+		if (isBridgeAnnounce(message)) {
 			this.registerPortNamespace(message.werpc_announce.namespace, fromPort);
 			return;
 		}
 
-		if (isEventMessage(message)) {
+		if (isBridgeEvent(message)) {
 			const clientPort = this.clientPorts.get(message.werpc_event.context.clientId);
 
 			if (clientPort && !safePost(clientPort, message)) {
@@ -129,7 +107,7 @@ class Router {
 			return;
 		}
 
-		if (isRequestMessage(message)) {
+		if (isBridgeRequest(message)) {
 			const request = message.werpc_request;
 			this.clientPorts.set(request.context.clientId, fromPort);
 			// propagate the resolved tab id so the owning handler sees it in ctx
@@ -159,7 +137,7 @@ class Router {
 
 			safePost(fromPort, {
 				werpc_event: {
-					idempotencyKey: createIdempotencyKey(),
+					v: PROTOCOL_VERSION,
 					context: request.context,
 					id: request.id,
 					type: "error",
@@ -183,7 +161,7 @@ class Router {
 			this.forgetPort(owner.port);
 			safePost(fromPort, {
 				werpc_event: {
-					idempotencyKey: createIdempotencyKey(),
+					v: PROTOCOL_VERSION,
 					context: request.context,
 					id: request.id,
 					type: "error",

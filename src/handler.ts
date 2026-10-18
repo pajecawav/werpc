@@ -1,17 +1,17 @@
 import { AnyProcedure, AnyRouter, TRPCError } from "@trpc/server";
 import { isObservable, observableToAsyncIterable } from "@trpc/server/observable";
 import { isAsyncIterable } from "@trpc/server/unstable-core-do-not-import";
-import * as v from "valibot";
 import {
 	BridgeContext,
 	BridgeErrorOutput,
 	BridgeEventPayload,
-	bridgeRequestSchema,
+	isBridgeDrop,
+	isBridgeRequest,
 	BridgeRequest,
+	PROTOCOL_VERSION,
 } from "./bridge";
 import { WERPC_NAMESPACE } from "./constants";
 import { detectContext } from "./detect";
-import { createIdempotencyKey } from "./idempotency/key";
 import { WERPCPort } from "./port";
 import { PortLike, router, RoutingHandler } from "./router";
 import { WERPCContext } from "./werpc";
@@ -20,18 +20,6 @@ export interface CreateHandlerOptions<TNamespace extends string, TRouter extends
 	namespace: TNamespace;
 	router: TRouter;
 }
-
-const isDropMessage = (message: unknown): message is { werpc_drop: { clientId: string } } => {
-	if (typeof message !== "object" || message === null || !("werpc_drop" in message)) {
-		return false;
-	}
-
-	const drop = message.werpc_drop;
-
-	const clientId = (drop as Record<string, unknown>)["clientId"];
-
-	return typeof drop === "object" && drop !== null && typeof clientId === "string";
-};
 
 const safePost = (port: PortLike, message: unknown) => {
 	try {
@@ -81,21 +69,22 @@ export class WERPCHandler<
 	}
 
 	private announce = () => {
-		this.port?.postMessage({ werpc_announce: { namespace: this.options.namespace } });
+		this.port?.postMessage({
+			werpc_announce: { v: PROTOCOL_VERSION, namespace: this.options.namespace },
+		});
 	};
 
 	private onPortMessage = async (message: unknown) => {
-		if (isDropMessage(message)) {
+		if (isBridgeDrop(message)) {
 			this.dropClient(message.werpc_drop.clientId);
 			return;
 		}
 
-		const req = v.safeParse(bridgeRequestSchema, message);
-		if (!req.success) {
+		if (!isBridgeRequest(message)) {
 			return;
 		}
 
-		const request = req.output.werpc_request;
+		const request = message.werpc_request;
 
 		if (request.context.namespace !== this.options.namespace) {
 			return;
@@ -124,9 +113,9 @@ export class WERPCHandler<
 		};
 		const tabId = request.context.tabId ?? fromPort?.sender?.tab?.id;
 
-		const sendEvent = (payload: Omit<BridgeEventPayload, "idempotencyKey">) => {
+		const sendEvent = (payload: Omit<BridgeEventPayload, "v">) => {
 			safePost(target, {
-				werpc_event: { ...payload, idempotencyKey: createIdempotencyKey() },
+				werpc_event: { ...payload, v: PROTOCOL_VERSION },
 			});
 		};
 
@@ -175,7 +164,7 @@ export class WERPCHandler<
 		requestId: string,
 		context: BridgeContext,
 		id: number,
-		sendEvent: (payload: Omit<BridgeEventPayload, "idempotencyKey">) => void,
+		sendEvent: (payload: Omit<BridgeEventPayload, "v">) => void,
 	) => {
 		this.completedSubscriptions.set(requestId, {
 			resendStop: () => {
@@ -243,7 +232,7 @@ export class WERPCHandler<
 	}: {
 		request: BridgeRequest["werpc_request"];
 		tabId: number | undefined;
-		sendEvent: (payload: Omit<BridgeEventPayload, "idempotencyKey">) => void;
+		sendEvent: (payload: Omit<BridgeEventPayload, "v">) => void;
 	}) => {
 		const { id, path, input, type } = request;
 		const { clientName } = request.context;
