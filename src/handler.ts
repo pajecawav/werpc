@@ -30,6 +30,9 @@ const safePost = (port: PortLike, message: unknown) => {
 	}
 };
 
+/** How long a finished subscription remembers its id to swallow duplicate starts. */
+const COMPLETED_SUBSCRIPTION_TTL_MS = 5_000;
+
 const describeError = (error: unknown, path: string): BridgeErrorOutput => {
 	if (error instanceof TRPCError) {
 		return { message: error.message, code: error.code, path };
@@ -44,7 +47,11 @@ export class WERPCHandler<
 	TNamespace extends string,
 	TRouter extends AnyRouter,
 > implements RoutingHandler {
-	private subscriptions = new Map<string, VoidFunction>();
+	private subscriptions = new Map<
+		string,
+		{ abort: () => void; context: BridgeContext; id: number }
+	>();
+	private completedSubscriptions = new Map<string, { resendStop: () => void }>();
 	private port: WERPCPort | null = null;
 
 	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
@@ -136,6 +143,28 @@ export class WERPCHandler<
 		});
 	};
 
+	private rememberCompleted = (
+		requestId: string,
+		context: BridgeContext,
+		id: number,
+		sendEvent: (payload: Omit<BridgeEventPayload, "idempotencyKey">) => void,
+	) => {
+		this.completedSubscriptions.set(requestId, {
+			resendStop: () => {
+				sendEvent({
+					context,
+					id,
+					type: "subscription.stop",
+					output: {},
+				});
+			},
+		});
+
+		setTimeout(() => {
+			this.completedSubscriptions.delete(requestId);
+		}, COMPLETED_SUBSCRIPTION_TTL_MS);
+	};
+
 	private processRequest = async ({
 		clientName,
 		tabId,
@@ -193,7 +222,7 @@ export class WERPCHandler<
 		const requestId = `${request.context.clientId}:${request.context.namespace}:${id}`;
 
 		if (type === "subscription.stop") {
-			this.subscriptions.get(requestId)?.();
+			this.subscriptions.get(requestId)?.abort();
 			this.subscriptions.delete(requestId);
 			return;
 		}
@@ -210,12 +239,27 @@ export class WERPCHandler<
 		});
 
 		if (type === "subscription.start") {
-			if (this.subscriptions.has(requestId)) {
-				// already subscribed: a duplicate start means the ack was lost
-				throw new TRPCError({
-					code: "CONFLICT",
-					message: `Duplicate subscription with id ${requestId}`,
+			const completed = this.completedSubscriptions.get(requestId);
+
+			if (completed) {
+				// duplicate start for a subscription that already finished:
+				// re-send the stop event instead of running the generator again
+				completed.resendStop();
+				return;
+			}
+
+			const existing = this.subscriptions.get(requestId);
+
+			if (existing) {
+				// duplicate start means the ack was lost (e.g. the client retried):
+				// re-send the ack instead of subscribing twice
+				sendEvent({
+					context: existing.context,
+					id: existing.id,
+					type: "subscription.ack",
+					output: {},
 				});
+				return;
 			}
 
 			if (!isAsyncIterable(output) && !isObservable(output)) {
@@ -229,13 +273,13 @@ export class WERPCHandler<
 				? observableToAsyncIterable(output, ac.signal)
 				: output;
 
-			this.subscriptions.set(requestId, () => ac.abort());
-
 			const context: BridgeContext = {
 				...request.context,
 				namespace: this.options.namespace,
 				tabId,
 			};
+
+			this.subscriptions.set(requestId, { abort: () => ac.abort(), context, id });
 
 			sendEvent({
 				context,
@@ -254,6 +298,7 @@ export class WERPCHandler<
 			}
 
 			this.subscriptions.delete(requestId);
+			this.rememberCompleted(requestId, context, id, sendEvent);
 
 			sendEvent({
 				context,

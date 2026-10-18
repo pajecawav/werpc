@@ -19,6 +19,8 @@ interface CreateWERPCLinkOptions extends Pick<
 > {
 	postRequest: (request: BridgeRequest) => void;
 	events: EventEmitter<LinkEvents>;
+	/** Fail queries/mutations after this long (ms); 0 disables. */
+	timeoutMs: number;
 }
 
 export type WERPCLink = TRPCLink<AnyRouter>;
@@ -31,6 +33,7 @@ export const createWERPCLink = ({
 	namespace,
 	postRequest,
 	events,
+	timeoutMs,
 }: CreateWERPCLinkOptions): WERPCLink => {
 	return () =>
 		({ op }) => {
@@ -63,10 +66,28 @@ export const createWERPCLink = ({
 				});
 
 				let subscriptionTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
+				let opTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
+
+				const clearTimers = () => {
+					clearTimeout(subscriptionTimeoutId);
+					clearTimeout(opTimeoutId);
+				};
+
+				if (timeoutMs > 0 && (type === "query" || type === "mutation")) {
+					opTimeoutId = setTimeout(() => {
+						unsubscribe();
+						observer.error(
+							new TRPCClientError(`werpc: ${type} timed out after ${timeoutMs}ms`, {
+								meta: { code: "TIMEOUT", message: "timeout" },
+							}),
+						);
+					}, timeoutMs);
+				}
 
 				const unsubscribe = events.on(`${namespace}:${id}`, event => {
 					switch (event.type) {
 						case "output":
+							clearTimers();
 							observer.next({ result: { data: event.output } });
 							observer.complete();
 							break;
@@ -78,6 +99,7 @@ export const createWERPCLink = ({
 
 						case "error": {
 							const error = event.output as BridgeErrorOutput;
+							clearTimers();
 							unsubscribe();
 							observer.error(
 								new TRPCClientError(error.message, {
@@ -88,6 +110,8 @@ export const createWERPCLink = ({
 						}
 
 						case "subscription.output":
+							// data proves the subscription started even if the ack was lost
+							clearTimeout(subscriptionTimeoutId);
 							observer.next({ result: { data: event.output } });
 							break;
 
@@ -103,6 +127,9 @@ export const createWERPCLink = ({
 
 				switch (type) {
 					case "subscription": {
+						const RETRY_STEPS = [1000, 2000, 5000] as const;
+						let retryIndex = 0;
+
 						(function subscribe() {
 							postRequest({
 								werpc_request: {
@@ -112,7 +139,14 @@ export const createWERPCLink = ({
 								},
 							});
 
-							subscriptionTimeoutId = setTimeout(subscribe, 1000);
+							// retry until the ack arrives; survives SW restarts and
+							// lost acks (the handler re-acks duplicate starts)
+							subscriptionTimeoutId = setTimeout(
+								subscribe,
+								RETRY_STEPS[Math.min(retryIndex, RETRY_STEPS.length - 1)] ??
+									RETRY_STEPS[2],
+							);
+							retryIndex++;
 						})();
 
 						break;
@@ -135,6 +169,7 @@ export const createWERPCLink = ({
 				}
 
 				return () => {
+					clearTimers();
 					postRequest({
 						werpc_request: {
 							...common,

@@ -16,6 +16,8 @@ export type WERPClient = {
 export interface CreateClientOptions {
 	clientName?: string;
 	scopeToTab?: boolean;
+	/** Fail queries/mutations after this long (ms). Default 30s, 0 disables. */
+	timeoutMs?: number;
 }
 
 class ClientManager {
@@ -44,6 +46,7 @@ class ClientManager {
 			scopeToTab: this.options.scopeToTab,
 			events: this.events,
 			postRequest: this.postMessage,
+			timeoutMs: this.options.timeoutMs ?? 30_000,
 		});
 		const client = createTRPCClient({ links: [link] });
 		this.clients.set(namespace, client);
