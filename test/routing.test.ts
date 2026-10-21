@@ -68,6 +68,7 @@ const setup = () => {
 	return {
 		ext,
 		contentPings,
+		contentRouter,
 		background: ns<typeof bgRouter>(popupClient, "background"),
 		other: ns<typeof otherSwRouter>(popupClient, "other"),
 		contentFromPopup: ns<typeof contentRouter>(popupClient, "content"),
@@ -98,6 +99,26 @@ describe("routing", () => {
 		);
 
 		expect(contentPings.tabs).toEqual([1, 2]);
+	});
+
+	it("routes an explicit-tab client to the handler of that tab", async () => {
+		const { ext, contentPings, contentRouter } = setup();
+
+		// a context with no sender tab (side panel) targeting a concrete tab
+		let panelClient: unknown;
+		inContext(ext, "panel", "page", undefined, () => {
+			panelClient = createClient({ clientName: "panel", tabId: 2, scopeToTab: true });
+		});
+
+		await expect(
+			withTimeout(
+				ns<typeof contentRouter>(panelClient, "content").ping.query(),
+				2000,
+				"panel",
+			),
+		).resolves.toBe("content tab 2");
+
+		expect(contentPings.tabs).toEqual([2]);
 	});
 
 	it("routes to multiple handlers inside the same service worker", async () => {

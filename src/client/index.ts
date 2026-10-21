@@ -16,6 +16,14 @@ export type WERPClient = {
 
 export interface CreateClientOptions {
 	clientName?: string;
+	/**
+	 * Explicit tab id for contexts whose port has no sender tab
+	 * (side panels, devtools panels, popups). Makes requests participate
+	 * in tab-scoped routing: `scopeToTab` filters handlers by this tab,
+	 * and `ctx.tabId` on the handler side reports it. Overrides the
+	 * devtools inspected-tab auto-detection.
+	 */
+	tabId?: number;
 	scopeToTab?: boolean;
 	/**
 	 * Deliver every request to all owners of the namespace (matching the
@@ -50,7 +58,7 @@ class ClientManager {
 		const link = createWERPCLink({
 			clientId: this.clientId,
 			clientName: this.options.clientName,
-			tabId: this.options.scopeToTab ? getDevtoolsTabId() : undefined,
+			tabId: this.options.tabId ?? (this.options.scopeToTab ? getDevtoolsTabId() : undefined),
 			namespace,
 			scopeToTab: this.options.scopeToTab,
 			fanout: this.options.fanout,

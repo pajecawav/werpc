@@ -156,6 +156,21 @@ const handler = createHandler({
 });
 ```
 
+The same applies to clients: a side panel (or popup) that tracks a concrete tab can target namespace owners of that tab:
+
+```ts
+const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+const client = createClient({
+    clientName: "sidepanel",
+    tabId: tab.id,
+    scopeToTab: true,
+});
+
+// reaches the content scripts of that tab, reports ctx.tabId on their side
+await client.content.ping.query();
+```
+
 ### `createClient(options?)`
 
 Returns a proxy object. Accessing a namespace lazily creates a tRPC client for it.
@@ -175,6 +190,7 @@ subscription.unsubscribe();
 Options:
 
 - `clientName?: string` — client label, surfaced as `ctx.clientName` on the handler side.
+- `tabId?: number` — explicit tab id for contexts whose port has no `sender.tab` (side panels, devtools panels, popups). With `scopeToTab`, requests are routed to the owners of this tab and `ctx.tabId` on the handler side reports it. Overrides the devtools inspected-tab auto-detection.
 - `scopeToTab?: boolean` — when `true`, requests prefer a handler living in the caller's tab. Use this from content scripts (and devtools panels, where the inspected tab is detected automatically).
 - `fanout?: boolean` — deliver every request to **all** owners of the namespace (matching the `scopeToTab` filter) instead of exactly one. See [Fan-out](#fan-out).
 - `timeoutMs?: number` — fail queries/mutations after this long (default 30 000, `0` disables). Timeouts reject with a `TRPCClientError`.
