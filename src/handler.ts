@@ -20,6 +20,12 @@ import { WERPCContext } from "./werpc";
 export interface CreateHandlerOptions<TNamespace extends string, TRouter extends AnyRouter> {
 	namespace: TNamespace;
 	router: TRouter;
+	/**
+	 * Explicit tab id for contexts whose port has no sender tab
+	 * (devtools panels, offscreen documents). Enables tab-scoped and
+	 * fan-out routing to this handler.
+	 */
+	tabId?: number;
 }
 
 const safePost = (port: PortLike, message: unknown) => {
@@ -87,7 +93,11 @@ export class WERPCHandler<
 
 	private announce = () => {
 		this.port?.postMessage({
-			werpc_announce: { v: PROTOCOL_VERSION, namespace: this.options.namespace },
+			werpc_announce: {
+				v: PROTOCOL_VERSION,
+				namespace: this.options.namespace,
+				tabId: this.options.tabId,
+			},
 		});
 	};
 
@@ -366,6 +376,11 @@ export class WERPCHandler<
 export const createHandler = <TNamespace extends string, TRouter extends AnyRouter>({
 	namespace: handlerNamespace,
 	router: handlerRouter,
+	tabId: handlerTabId,
 }: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
-	return new WERPCHandler({ namespace: handlerNamespace, router: handlerRouter });
+	return new WERPCHandler({
+		namespace: handlerNamespace,
+		router: handlerRouter,
+		tabId: handlerTabId,
+	});
 };

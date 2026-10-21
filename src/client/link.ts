@@ -20,7 +20,7 @@ export type LinkEvents = {
 
 interface CreateWERPCLinkOptions extends Pick<
 	BridgeContext,
-	"clientId" | "clientName" | "namespace" | "scopeToTab" | "tabId"
+	"clientId" | "clientName" | "namespace" | "scopeToTab" | "tabId" | "fanout"
 > {
 	postRequest: (request: BridgeRequest) => void;
 	events: EventEmitter<LinkEvents>;
@@ -35,6 +35,7 @@ export const createWERPCLink = ({
 	clientName,
 	tabId,
 	scopeToTab,
+	fanout,
 	namespace,
 	postRequest,
 	events,
@@ -52,6 +53,7 @@ export const createWERPCLink = ({
 						namespace,
 						tabId,
 						scopeToTab,
+						fanout,
 					} satisfies BridgeContext,
 					id,
 					path,

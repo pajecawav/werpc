@@ -17,6 +17,14 @@ export type WERPClient = {
 export interface CreateClientOptions {
 	clientName?: string;
 	scopeToTab?: boolean;
+	/**
+	 * Deliver every request to all owners of the namespace (matching the
+	 * scopeToTab filter) instead of exactly one. Intended for broadcast
+	 * scenarios: multiple content scripts or devtools panels serving the
+	 * same namespace. Responses merge: the first output (or error) wins
+	 * for queries/mutations, subscription streams are concatenated.
+	 */
+	fanout?: boolean;
 	/** Fail queries/mutations after this long (ms). Default 30s, 0 disables. */
 	timeoutMs?: number;
 }
@@ -45,6 +53,7 @@ class ClientManager {
 			tabId: this.options.scopeToTab ? getDevtoolsTabId() : undefined,
 			namespace,
 			scopeToTab: this.options.scopeToTab,
+			fanout: this.options.fanout,
 			events: this.events,
 			postRequest: this.postMessage,
 			timeoutMs: this.options.timeoutMs ?? 30_000,

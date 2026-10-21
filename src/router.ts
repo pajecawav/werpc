@@ -20,7 +20,9 @@ export interface RoutingHandler {
 	dropClient(clientId: string): void;
 }
 
-type Owner = { kind: "local"; handler: RoutingHandler } | { kind: "port"; port: PortLike };
+type Owner =
+	| { kind: "local"; handler: RoutingHandler }
+	| { kind: "port"; port: PortLike; tabId: number | undefined };
 
 /**
  * How long an unroutable request waits for a late `announce` before failing.
@@ -59,9 +61,13 @@ class Router {
 		this.localHandlers.delete(handler);
 	};
 
-	public registerPortNamespace = (namespace: string, port: PortLike) => {
+	public registerPortNamespace = (
+		namespace: string,
+		port: PortLike,
+		tabId: number | undefined,
+	) => {
 		this.removeOwners(namespace, owner => owner.kind === "port" && owner.port === port);
-		this.addOwner(namespace, { kind: "port", port });
+		this.addOwner(namespace, { kind: "port", port, tabId });
 	};
 
 	public forgetPort = (port: PortLike) => {
@@ -101,7 +107,11 @@ class Router {
 		}
 
 		if (isBridgeAnnounce(message)) {
-			this.registerPortNamespace(message.werpc_announce.namespace, fromPort);
+			this.registerPortNamespace(
+				message.werpc_announce.namespace,
+				fromPort,
+				message.werpc_announce.tabId,
+			);
 			return;
 		}
 
@@ -132,11 +142,11 @@ class Router {
 
 	private routeRequest = (message: BridgeRequest, fromPort: PortLike, attempt: number) => {
 		const request = message.werpc_request;
-		const { namespace, scopeToTab } = request.context;
+		const { namespace, scopeToTab, fanout } = request.context;
 		const tabId = request.context.tabId ?? fromPort.sender?.tab?.id;
-		const owner = this.resolveOwner(namespace, scopeToTab ? tabId : undefined);
+		const owners = this.resolveOwners(namespace, scopeToTab ? tabId : undefined);
 
-		if (!owner) {
+		if (owners.length === 0) {
 			if (attempt === 0) {
 				// the target handler may still be re-announcing after a SW restart
 				setTimeout(() => this.routeRequest(message, fromPort, 1), ROUTING_GRACE_MS);
@@ -160,13 +170,29 @@ class Router {
 			return;
 		}
 
-		if (owner.kind === "local") {
-			void owner.handler.acceptRequest(request, fromPort);
-			return;
+		// fan-out requests (and subscription stops, which must reach every
+		// owner that may hold a subscription) go to all matching owners;
+		// everything else goes to exactly one for exactly-once semantics
+		const targets = fanout || request.type === "subscription.stop" ? owners : [owners[0]!];
+
+		let delivered = 0;
+
+		for (const owner of targets) {
+			if (owner.kind === "local") {
+				void owner.handler.acceptRequest(request, fromPort);
+				delivered++;
+				continue;
+			}
+
+			if (safePost(owner.port, message)) {
+				delivered++;
+				continue;
+			}
+
+			this.forgetPort(owner.port);
 		}
 
-		if (!safePost(owner.port, message)) {
-			this.forgetPort(owner.port);
+		if (delivered === 0) {
 			safePost(fromPort, {
 				werpc_event: {
 					v: PROTOCOL_VERSION,
@@ -183,25 +209,25 @@ class Router {
 		}
 	};
 
-	private resolveOwner = (namespace: string, tabId: number | undefined): Owner | undefined => {
+	private resolveOwners = (namespace: string, tabId: number | undefined): Owner[] => {
 		const owners = this.owners.get(namespace);
 
 		if (!owners || owners.length === 0) {
-			return undefined;
+			return [];
 		}
 
 		if (tabId !== undefined) {
-			const tabMatch = owners.find(
-				owner => owner.kind === "port" && owner.port.sender?.tab?.id === tabId,
+			const tabMatches = owners.filter(
+				owner =>
+					owner.kind === "port" && (owner.tabId ?? owner.port.sender?.tab?.id) === tabId,
 			);
 
-			if (tabMatch) {
-				return tabMatch;
+			if (tabMatches.length > 0) {
+				return tabMatches;
 			}
 		}
 
-		const first = owners[0];
-		return first;
+		return owners;
 	};
 
 	private addOwner = (namespace: string, owner: Owner) => {
@@ -210,8 +236,11 @@ class Router {
 		this.owners.set(namespace, owners);
 	};
 
-	private allPortOwners = (): { kind: "port"; port: PortLike }[] => {
-		const ports = new Map<PortLike, { kind: "port"; port: PortLike }>();
+	private allPortOwners = (): { kind: "port"; port: PortLike; tabId: number | undefined }[] => {
+		const ports = new Map<
+			PortLike,
+			{ kind: "port"; port: PortLike; tabId: number | undefined }
+		>();
 
 		for (const owners of this.owners.values()) {
 			for (const owner of owners) {

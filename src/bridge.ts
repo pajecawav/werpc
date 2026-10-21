@@ -6,6 +6,7 @@ export interface BridgeContext {
 	namespace: string;
 	tabId: number | undefined;
 	scopeToTab: boolean | undefined;
+	fanout: boolean | undefined;
 }
 
 export type BridgeRequestType = "query" | "mutation" | "subscription.start" | "subscription.stop";
@@ -52,6 +53,7 @@ export interface BridgeAnnounce {
 	werpc_announce: {
 		v: number;
 		namespace: string;
+		tabId: number | undefined;
 	};
 }
 
@@ -100,7 +102,8 @@ const isBridgeContext = (value: unknown): value is BridgeContext => {
 		(clientName === undefined || typeof clientName === "string") &&
 		typeof value["namespace"] === "string" &&
 		(tabId === undefined || typeof tabId === "number") &&
-		(scopeToTab === undefined || typeof scopeToTab === "boolean")
+		(scopeToTab === undefined || typeof scopeToTab === "boolean") &&
+		(value["fanout"] === undefined || typeof value["fanout"] === "boolean")
 	);
 };
 
@@ -145,8 +148,13 @@ export const isBridgeAnnounce = (message: unknown): message is BridgeAnnounce =>
 	}
 
 	const announce = message["werpc_announce"];
+	const tabId = announce["tabId"];
 
-	return hasVersion(announce) && typeof announce["namespace"] === "string";
+	return (
+		hasVersion(announce) &&
+		typeof announce["namespace"] === "string" &&
+		(tabId === undefined || typeof tabId === "number")
+	);
 };
 
 export const isBridgeDrop = (message: unknown): message is BridgeDrop => {

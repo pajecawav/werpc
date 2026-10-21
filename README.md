@@ -139,10 +139,22 @@ Behavior:
 - Errors thrown by procedures (including invalid paths) are delivered to the caller as tRPC errors.
 - `handler.dispose()` unregisters the namespace, aborts its subscriptions and closes the port.
 
-**Multiple contexts may register the same namespace** (e.g. a content script in several tabs). A request is routed to exactly one owner:
+**Multiple contexts may register the same namespace** (e.g. a content script in several tabs, or several scripts/panels in one tab). A request is routed to exactly one owner:
 
-- if the caller set `scopeToTab: true` and the target namespace has an owner in the caller's tab, that owner wins;
-- otherwise the first registered owner wins (deterministic, but you should not rely on which tab it is).
+- if the caller set `scopeToTab: true` and the target namespace has owners in the caller's tab, those win;
+- otherwise the first registered owner wins (deterministic, but you should not rely on which context it is).
+
+Use [`fanout: true`](#fan-out) when you need to reach every owner.
+
+Contexts whose port has no `sender.tab` (devtools panels, offscreen documents) can pass an explicit `tabId` so they participate in tab-scoped routing:
+
+```ts
+const handler = createHandler({
+    namespace: "panel",
+    router,
+    tabId: chrome.devtools.inspectedWindow.tabId,
+});
+```
 
 ### `createClient(options?)`
 
@@ -164,6 +176,7 @@ Options:
 
 - `clientName?: string` — client label, surfaced as `ctx.clientName` on the handler side.
 - `scopeToTab?: boolean` — when `true`, requests prefer a handler living in the caller's tab. Use this from content scripts (and devtools panels, where the inspected tab is detected automatically).
+- `fanout?: boolean` — deliver every request to **all** owners of the namespace (matching the `scopeToTab` filter) instead of exactly one. See [Fan-out](#fan-out).
 - `timeoutMs?: number` — fail queries/mutations after this long (default 30 000, `0` disables). Timeouts reject with a `TRPCClientError`.
 
 `createClient` cannot be called from a service worker — it throws. The SW is a handler-only context. To trigger work from the SW, expose procedures on its router and call them from other contexts, or have other contexts subscribe to SW subscriptions.
@@ -194,6 +207,25 @@ interface WERPCContext {
 ```
 
 `tabId` is the tab of the **caller** (undefined for popup/options/SW callers), `clientName` comes from `createClient` options.
+
+## Fan-out
+
+By default a call goes to exactly one owner of the namespace — this keeps mutations exactly-once. When several contexts serve the same namespace and a call should reach **all** of them (push settings to every content script, broadcast to all devtools panels), create the client with `fanout: true`:
+
+```ts
+const broadcaster = createClient({ clientName: "popup", fanout: true });
+// every context registered under "content" executes this:
+await broadcaster.content.settingsChanged.mutate(config);
+
+// merged stream from every owner:
+broadcaster.content.tick.subscribe(undefined, { onData: console.log });
+```
+
+Semantics:
+
+- With `scopeToTab: true` the fan-out is limited to the owners in the caller's tab; without it, every owner in every tab participates.
+- Queries/mutations: every owner executes; the client takes the **first** arriving response (or error). Later responses are ignored — treat fan-out calls as fire-and-forget unless all owners return equivalent data.
+- Subscriptions: streams from all owners are merged into one; `unsubscribe()` stops all of them.
 
 ## Errors
 
