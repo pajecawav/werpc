@@ -70,24 +70,28 @@ export class FakeExtension {
 	}
 
 	public makeChrome = (ctxId: string): typeof chrome => {
+		const ctx = this.contexts.get(ctxId);
 		const chromeApi = {
 			runtime: {
 				connect: (_extensionId: string | undefined, info: { name?: string }): FakePort =>
 					this.connectAs(ctxId, info),
 				onConnect: {
 					addListener: (cb: (port: FakePort) => void) => {
-						const ctx = this.contexts.get(ctxId);
 						if (!ctx) {
 							throw new Error(`Unknown context ${ctxId}`);
 						}
 						ctx.onConnectListeners.add(cb);
 					},
 					removeListener: (cb: (port: FakePort) => void) => {
-						const ctx = this.contexts.get(ctxId);
 						ctx?.onConnectListeners.delete(cb);
 					},
 				},
-				getPlatformInfo: () => Promise.resolve({ os: "cros" }),
+				// Real Chrome exposes a reduced chrome.runtime to content
+				// scripts — getPlatformInfo is absent there. The fake must
+				// mirror that or keep-alive bugs stay untested.
+				...(ctx?.kind === "content"
+					? {}
+					: { getPlatformInfo: () => Promise.resolve({ os: "cros" }) }),
 			},
 		};
 

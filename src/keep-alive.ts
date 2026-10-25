@@ -11,7 +11,15 @@ let refCount = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
 
 const tick = () => {
-	void chrome.runtime.getPlatformInfo();
+	// Content scripts expose a reduced chrome.runtime — getPlatformInfo is
+	// absent there, and extension API calls made from a content script
+	// cannot reset the service worker's idle timer anyway. Skip quietly:
+	// service workers and extension pages keep the full surface.
+	const platformInfo = chrome.runtime?.getPlatformInfo;
+	if (typeof platformInfo !== "function") {
+		return;
+	}
+	platformInfo.call(chrome.runtime);
 };
 
 export const acquireKeepAlive = () => {
