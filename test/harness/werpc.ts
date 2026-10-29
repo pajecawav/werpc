@@ -22,6 +22,35 @@ export const swMode = <T>(fn: () => T): T => {
 	}
 };
 
+/**
+ * Emulates the Firefox MV3 background: no ServiceWorkerGlobalScope, and
+ * `location` at the fixed generated event-page path — the pair
+ * `detectContext()` keys on.
+ */
+export const eventPageMode = <T>(fn: () => T): T => {
+	const g = globalThis as unknown as Record<string, unknown>;
+	const prevSelf = g["self"];
+	const prevLocation = g["location"];
+	g["self"] = globalThis;
+	Object.defineProperty(g, "location", {
+		value: new URL("moz-extension://some-uuid/_generated_background_page.html"),
+		configurable: true,
+	});
+	try {
+		return fn();
+	} finally {
+		g["self"] = prevSelf;
+		if (prevLocation === undefined) {
+			delete g["location"];
+		} else {
+			Object.defineProperty(g, "location", {
+				value: prevLocation,
+				configurable: true,
+			});
+		}
+	}
+};
+
 export const inContext = <T>(
 	ext: FakeExtension,
 	ctxId: string,

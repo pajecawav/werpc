@@ -1,7 +1,7 @@
 import { createTRPCClient, TRPCClient } from "@trpc/client";
 import { AnyRouter } from "@trpc/server";
 import { BridgeRequest, isBridgeEvent } from "../bridge";
-import { detectContext } from "../detect";
+import { detectContext, isBackgroundContext } from "../detect";
 import { EventEmitter } from "../events";
 import { WERPCPort } from "../port";
 import { WERPCNamespaces } from "../types";
@@ -65,6 +65,7 @@ class ClientManager {
 			events: this.events,
 			postRequest: this.postMessage,
 			timeoutMs: this.options.timeoutMs ?? 30_000,
+			onPortReconnect: this.onPortReconnect,
 		});
 		const client = createTRPCClient({ links: [link] });
 		this.clients.set(namespace, client);
@@ -78,6 +79,10 @@ class ClientManager {
 
 	private postMessage = (message: BridgeRequest) => {
 		this.port.postMessage(message);
+	};
+
+	private onPortReconnect = (cb: () => void): VoidFunction => {
+		return this.port.onReconnect(cb);
 	};
 
 	private onMessage = (message: unknown) => {
@@ -105,8 +110,10 @@ const getDevtoolsTabId = (): number | undefined => {
 };
 
 export const createClient = (options: CreateClientOptions = {}): WERPClient => {
-	if (detectContext() === "service_worker") {
-		throw new Error("Can't use client in background worker context. Use subscriptions instead");
+	if (isBackgroundContext(detectContext())) {
+		throw new Error(
+			"Can't use client in a background context (service worker or event page). Use createHandler instead",
+		);
 	}
 
 	const clientManager = new ClientManager(options);

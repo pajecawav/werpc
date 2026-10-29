@@ -162,7 +162,7 @@ describe("werpc context guards", () => {
 		const ext = new FakeExtension();
 		inContext(ext, "bg", "sw", undefined, () => {
 			swMode(() => {
-				expect(() => createClient({})).toThrow(/background worker context/i);
+				expect(() => createClient({})).toThrow(/background context/i);
 			});
 		});
 	});

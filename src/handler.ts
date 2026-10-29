@@ -11,7 +11,7 @@ import {
 	PROTOCOL_VERSION,
 } from "./bridge";
 import { WERPC_NAMESPACE } from "./constants";
-import { detectContext } from "./detect";
+import { detectContext, isBackgroundContext } from "./detect";
 import { acquireKeepAlive, releaseKeepAlive } from "./keep-alive";
 import { WERPCPort } from "./port";
 import { PortLike, router, RoutingHandler } from "./router";
@@ -26,6 +26,12 @@ export interface CreateHandlerOptions<TNamespace extends string, TRouter extends
 	 * fan-out routing to this handler.
 	 */
 	tabId?: number;
+	/**
+	 * Force server behavior (own the router, accept ports) regardless of
+	 * context detection. For custom `background.page` documents, whose
+	 * path the generated-page detection cannot see.
+	 */
+	background?: boolean;
 }
 
 const safePost = (port: PortLike, message: unknown) => {
@@ -56,14 +62,23 @@ export class WERPCHandler<
 > implements RoutingHandler {
 	private subscriptions = new Map<
 		string,
-		{ close: () => void; context: BridgeContext; id: number }
+		{
+			close: () => void;
+			context: BridgeContext;
+			id: number;
+			/** Refreshed on every re-ack: after a reconnect the stream must
+			 * flow through the port the latest request arrived on. */
+			route: (payload: Omit<BridgeEventPayload, "v">) => void;
+		}
 	>();
 	private completedSubscriptions = new Map<string, { resendStop: () => void }>();
 	private port: WERPCPort | null = null;
-	private readonly isServiceWorker = detectContext() === "service_worker";
+	private readonly isBackground: boolean;
 
 	public constructor(private readonly options: CreateHandlerOptions<TNamespace, TRouter>) {
-		if (this.isServiceWorker) {
+		this.isBackground = options.background === true || isBackgroundContext(detectContext());
+
+		if (this.isBackground) {
 			router.registerLocal(options.namespace, this);
 			chrome.runtime.onConnect.addListener(this.addPort);
 		} else {
@@ -78,7 +93,7 @@ export class WERPCHandler<
 
 	/** Stop serving the namespace and release all resources. */
 	public dispose = () => {
-		if (this.isServiceWorker) {
+		if (this.isBackground) {
 			router.unregisterLocal(this.options.namespace, this);
 			chrome.runtime.onConnect.removeListener(this.addPort);
 		} else {
@@ -295,8 +310,12 @@ export class WERPCHandler<
 			const existing = this.subscriptions.get(requestId);
 
 			if (existing) {
-				// duplicate start means the ack was lost (e.g. the client retried):
-				// re-send the ack instead of subscribing twice
+				// duplicate start means the ack was lost (e.g. the client
+				// retried, or it reconnected after a hub restart and its
+				// live subscription announced itself again): re-ack, and
+				// refresh the output route — the stream's captured port may
+				// be dead, the one this request arrived on is not
+				existing.route = sendEvent;
 				sendEvent({
 					context: existing.context,
 					id: existing.id,
@@ -323,15 +342,18 @@ export class WERPCHandler<
 				tabId,
 			};
 
-			acquireKeepAlive();
-			this.subscriptions.set(requestId, {
+			const entry = {
 				close: () => {
 					ac.abort();
 					releaseKeepAlive();
 				},
 				context,
 				id,
-			});
+				route: sendEvent,
+			};
+
+			acquireKeepAlive();
+			this.subscriptions.set(requestId, entry);
 
 			sendEvent({
 				context,
@@ -340,24 +362,40 @@ export class WERPCHandler<
 				output: {},
 			});
 
-			for await (const chunk of iterable) {
-				sendEvent({
-					context,
-					id,
-					type: "subscription.output",
-					output: chunk,
-				});
+			try {
+				for await (const chunk of iterable) {
+					entry.route({
+						context,
+						id,
+						type: "subscription.output",
+						output: chunk,
+					});
+				}
+			} catch (error) {
+				// The generator threw: release the entry (and keep-alive) but
+				// send no stop and leave no tombstone — the error report the
+				// caller sends is the client's end-of-stream signal.
+				if (this.subscriptions.get(requestId) === entry) {
+					this.closeSubscription(requestId);
+				}
+				throw error;
 			}
 
-			this.closeSubscription(requestId);
-			this.rememberCompleted(requestId, context, id, sendEvent);
+			// Finish only if we still own the requestId: a dropClient or
+			// a re-start may have removed/replaced us — then our abort
+			// must leave no completion tombstone and no stop event that
+			// would kill the successor stream on the client.
+			if (this.subscriptions.get(requestId) === entry) {
+				this.closeSubscription(requestId);
+				this.rememberCompleted(requestId, context, id, entry.route);
 
-			sendEvent({
-				context,
-				id,
-				type: "subscription.stop",
-				output: {},
-			});
+				entry.route({
+					context,
+					id,
+					type: "subscription.stop",
+					output: {},
+				});
+			}
 		} else {
 			sendEvent({
 				context: {
@@ -377,10 +415,12 @@ export const createHandler = <TNamespace extends string, TRouter extends AnyRout
 	namespace: handlerNamespace,
 	router: handlerRouter,
 	tabId: handlerTabId,
+	background: handlerBackground,
 }: CreateHandlerOptions<TNamespace, TRouter>): WERPCHandler<TNamespace, TRouter> => {
 	return new WERPCHandler({
 		namespace: handlerNamespace,
 		router: handlerRouter,
 		tabId: handlerTabId,
+		background: handlerBackground,
 	});
 };

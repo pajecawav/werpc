@@ -26,6 +26,8 @@ interface CreateWERPCLinkOptions extends Pick<
 	events: EventEmitter<LinkEvents>;
 	/** Fail queries/mutations after this long (ms); 0 disables. */
 	timeoutMs: number;
+	/** Subscribe to port reconnects; returns the unsubscribe function. */
+	onPortReconnect: (cb: () => void) => VoidFunction;
 }
 
 export type WERPCLink = TRPCLink<AnyRouter>;
@@ -40,6 +42,7 @@ export const createWERPCLink = ({
 	postRequest,
 	events,
 	timeoutMs,
+	onPortReconnect,
 }: CreateWERPCLinkOptions): WERPCLink => {
 	return () =>
 		({ op }) => {
@@ -63,6 +66,8 @@ export const createWERPCLink = ({
 				const cleanup = () => {
 					clearTimers();
 					unsubscribe();
+					offReconnect?.();
+					finished = true;
 
 					if (type === "subscription") {
 						postRequest({
@@ -81,6 +86,15 @@ export const createWERPCLink = ({
 
 				let subscriptionTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
 				let opTimeoutId: ReturnType<typeof setTimeout> | undefined = undefined;
+				/** Set once the op is over (output/error/stop/unsubscribed):
+				 * a reconnect must not resurrect it. */
+				let finished = false;
+				/** Suppresses duplicate `started` signals on re-acks. */
+				let startedSent = false;
+				/** Whether the stream is considered started (ack or data
+				 * seen) — a reconnect re-kicks only such settled ops. */
+				let acked = false;
+				let offReconnect: VoidFunction | undefined = undefined;
 
 				const clearTimers = () => {
 					clearTimeout(subscriptionTimeoutId);
@@ -101,17 +115,23 @@ export const createWERPCLink = ({
 				const unsubscribe = events.on(`${namespace}:${id}`, event => {
 					switch (event.type) {
 						case "output":
+							finished = true;
 							clearTimers();
 							observer.next({ result: { data: event.output } });
 							observer.complete();
 							break;
 
 						case "subscription.ack":
+							acked = true;
 							clearTimeout(subscriptionTimeoutId);
-							observer.next({ result: { type: "started" } });
+							if (!startedSent) {
+								startedSent = true;
+								observer.next({ result: { type: "started" } });
+							}
 							break;
 
 						case "error": {
+							finished = true;
 							const error = event.output as BridgeErrorOutput;
 							clearTimers();
 							unsubscribe();
@@ -125,11 +145,13 @@ export const createWERPCLink = ({
 
 						case "subscription.output":
 							// data proves the subscription started even if the ack was lost
+							acked = true;
 							clearTimeout(subscriptionTimeoutId);
 							observer.next({ result: { data: event.output } });
 							break;
 
 						case "subscription.stop":
+							finished = true;
 							unsubscribe();
 							observer.complete();
 							break;
@@ -144,7 +166,10 @@ export const createWERPCLink = ({
 						const RETRY_STEPS = [1000, 2000, 5000] as const;
 						let retryIndex = 0;
 
-						(function subscribe() {
+						const subscribe = () => {
+							if (finished) {
+								return;
+							}
 							postRequest({
 								werpc_request: {
 									...common,
@@ -153,15 +178,32 @@ export const createWERPCLink = ({
 								},
 							});
 
-							// retry until the ack arrives; survives SW restarts and
-							// lost acks (the handler re-acks duplicate starts)
+							// retry until the ack arrives; survives SW/event-page
+							// restarts and lost acks (the handler re-acks duplicate
+							// starts)
 							subscriptionTimeoutId = setTimeout(
 								subscribe,
 								RETRY_STEPS[Math.min(retryIndex, RETRY_STEPS.length - 1)] ??
 									RETRY_STEPS[2],
 							);
 							retryIndex++;
-						})();
+						};
+
+						// A hub restart drops this client's port mapping; once the
+						// port reconnects, a live (already acked) subscription must
+						// announce itself again — the retry loop has stopped by
+						// then. The handler re-acks a start it still holds or
+						// spins up a fresh stream; either way outputs resume.
+						offReconnect = onPortReconnect(() => {
+							if (finished || !acked) {
+								return; // over, or the retry loop is still running
+							}
+							acked = false;
+							retryIndex = 0;
+							subscribe();
+						});
+
+						subscribe();
 
 						break;
 					}

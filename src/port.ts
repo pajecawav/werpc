@@ -32,8 +32,11 @@ export class WERPCPort {
 		this.listeners.add(cb);
 	};
 
-	public onReconnect = (cb: () => void) => {
+	public onReconnect = (cb: () => void): VoidFunction => {
 		this.reconnectedListeners.add(cb);
+		return () => {
+			this.reconnectedListeners.delete(cb);
+		};
 	};
 
 	public close = () => {
