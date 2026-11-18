@@ -22,8 +22,13 @@ const setup = () => {
 	const ext = new FakeExtension();
 
 	const bgT = initWERPC();
+	const swMutations = { count: 0 };
 	const bgRouter = bgT.router({
 		ping: bgT.procedure.query(() => "pong"),
+		bump: bgT.procedure.mutation(() => {
+			swMutations.count++;
+			return swMutations.count;
+		}),
 	});
 	const otherT = initWERPC();
 	const otherSwRouter = otherT.router({
@@ -68,6 +73,7 @@ const setup = () => {
 	return {
 		ext,
 		contentPings,
+		swMutations,
 		contentRouter,
 		background: ns<typeof bgRouter>(popupClient, "background"),
 		other: ns<typeof otherSwRouter>(popupClient, "other"),
@@ -128,6 +134,17 @@ describe("routing", () => {
 		await expect(withTimeout(other.ping.query(), 2000, "other")).resolves.toBe(
 			"second sw handler",
 		);
+	});
+
+	it("executes a mutation once when several handlers share the background context", async () => {
+		const { background, swMutations } = setup();
+
+		await expect(withTimeout(background.bump.mutate(), 2000, "bump")).resolves.toBe(1);
+
+		// duplicates (if any) land on the same microtask cascade — give them a beat
+		await sleep(50);
+
+		expect(swMutations.count).toBe(1);
 	});
 
 	it("rejects requests for an unknown namespace instead of hanging", async () => {

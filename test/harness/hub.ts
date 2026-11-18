@@ -119,9 +119,11 @@ export class FakeExtension {
 				continue;
 			}
 
+			// like Chrome: every onConnect listener of a context observes the
+			// SAME Port object, not a per-listener copy
+			const lport = this.makePort(conn, otherId, info.name ?? "", ctx.sender);
+			conn.listenerPorts.set(otherId, lport);
 			for (const listener of otherCtx.onConnectListeners) {
-				const lport = this.makePort(conn, otherId, info.name ?? "", ctx.sender);
-				conn.listenerPorts.set(otherId, lport);
 				// like Chrome: onConnect is delivered asynchronously and may
 				// land AFTER messages already posted on the fresh port
 				setTimeout(() => listener(lport), 0);

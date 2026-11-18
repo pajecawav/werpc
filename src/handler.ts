@@ -43,6 +43,15 @@ const safePost = (port: PortLike, message: unknown) => {
 	}
 };
 
+/**
+ * All background handlers observe the same `chrome.runtime.onConnect`, and
+ * every werpc port shares one name — so each of them sees every connection.
+ * A port must be wired to the shared router exactly once: without this guard
+ * every inbound message reaches `handleMessage` once per handler instance,
+ * and queries/mutations execute (and answer) repeatedly.
+ */
+const wiredPorts = new WeakSet<chrome.runtime.Port>();
+
 /** How long a finished subscription remembers its id to swallow duplicate starts. */
 const COMPLETED_SUBSCRIPTION_TTL_MS = 5_000;
 
@@ -191,6 +200,11 @@ export class WERPCHandler<
 		if (port.name !== WERPC_NAMESPACE) {
 			return;
 		}
+
+		if (wiredPorts.has(port)) {
+			return;
+		}
+		wiredPorts.add(port);
 
 		const portLike = port as unknown as PortLike;
 
